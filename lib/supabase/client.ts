@@ -1,6 +1,6 @@
-// lib/supabase/client.ts
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
+/* Фракции */
 export type Faction =
   | "CIVILIAN" | "FIB" | "LSPD" | "LSCSD" | "EMS" | "WN" | "SANG" | "GOV" | "JUDICIAL";
 
@@ -16,8 +16,10 @@ export const FactionLabel: Record<Faction, string> = {
   JUDICIAL: "Судейский корпус",
 };
 
+/* Роли госслужбы */
 export type GovRole = "NONE" | "PROSECUTOR" | "JUDGE" | "TECH_ADMIN";
 
+/* Профиль */
 export interface Profile {
   id: string;
   nickname: string;
@@ -30,6 +32,7 @@ export interface Profile {
   updated_at: string | null;
 }
 
+/* Запись на приём (если уже делали ранее, оставь как есть) */
 export type Department =
   | "GOVERNOR" | "VICE_GOVERNOR" | "MIN_FINANCE" | "MIN_JUSTICE" | "BAR"
   | "GOV_STAFF" | "MIN_DEFENSE" | "MIN_SECURITY" | "MIN_HEALTH";
@@ -56,6 +59,20 @@ export interface Appointment {
   details: string | null;
   preferred_datetime: string | null; // ISO
   status: AppointmentStatus;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+/* Верификация прокурор/судья */
+export type VerificationKind = "PROSECUTOR" | "JUDGE";
+export type VerificationStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+export interface VerificationRequest {
+  id: string;
+  created_by: string;
+  kind: VerificationKind;
+  comment: string | null;
+  status: VerificationStatus;
   created_at: string | null;
   updated_at: string | null;
 }
