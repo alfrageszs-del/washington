@@ -12,24 +12,20 @@ export default function AuthControls() {
   useEffect(() => {
     let mounted = true;
 
-    // Текущая сессия
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!mounted) return;
       setSession(session ?? null);
       setLoading(false);
     });
 
-    // Подписка на изменения сессии
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    const { data } = supabase.auth.onAuthStateChange((_event, newSession) => {
       if (!mounted) return;
       setSession(newSession ?? null);
     });
 
     return () => {
       mounted = false;
-      subscription.unsubscribe();
+      data.subscription.unsubscribe();
     };
   }, []);
 
@@ -37,31 +33,46 @@ export default function AuthControls() {
     await supabase.auth.signOut();
   };
 
-  if (loading) return null;
+  if (loading) {
+    // ничего не моргаем в шапке
+    return null;
+  }
 
-  return session ? (
+  // НЕавторизован: Войти / Регистрация
+  if (!session) {
+    return (
+      <div className="flex items-center gap-2">
+        <a
+          href="/auth/sign-in"
+          className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 hover:bg-gray-50"
+        >
+          Войти
+        </a>
+        <a
+          href="/auth/sign-up"
+          className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+        >
+          Регистрация
+        </a>
+      </div>
+    );
+  }
+
+  // Авторизован: Профиль / Выйти
+  return (
     <div className="flex items-center gap-2">
-      <a href="/account" className="rounded-md bg-gray-100 px-3 py-2 text-sm">
+      <a
+        href="/account"
+        className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 hover:bg-gray-50"
+      >
         Профиль
       </a>
       <button
         onClick={signOut}
-        className="rounded-md bg-red-600 px-3 py-2 text-sm text-white hover:bg-red-700"
+        className="rounded-md bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700"
       >
         Выйти
       </button>
-    </div>
-  ) : (
-    <div className="flex items-center gap-2">
-      <a href="/auth/sign-in" className="rounded-md bg-gray-100 px-3 py-2 text-sm">
-        Войти
-      </a>
-      <a
-        href="/auth/sign-up"
-        className="rounded-md bg-indigo-600 px-3 py-2 text-sm text-white hover:bg-indigo-700"
-      >
-        Регистрация
-      </a>
     </div>
   );
 }

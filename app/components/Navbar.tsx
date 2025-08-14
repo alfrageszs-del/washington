@@ -4,12 +4,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import BackButton from "./BackButton";
 import AuthControls from "./AuthControls";
 
 type NavLink = {
   href: `/${string}` | "/";
   label: string;
-  /** Если true — активным считается и сам путь, и все его подстраницы */
   matchPrefix?: boolean;
 };
 
@@ -28,8 +28,7 @@ export default function Navbar() {
   const [open, setOpen] = useState<boolean>(false);
 
   const isActive = (l: NavLink): boolean =>
-    pathname === l.href ||
-    (!!l.matchPrefix && pathname.startsWith(l.href + "/"));
+    pathname === l.href || (!!l.matchPrefix && pathname.startsWith(l.href + "/"));
 
   return (
     <header className="sticky top-0 z-50 border-b bg-white/80 backdrop-blur">
@@ -43,10 +42,7 @@ export default function Navbar() {
         </Link>
 
         {/* Десктоп-меню */}
-        <nav
-          className="hidden items-center gap-1 md:flex"
-          aria-label="Главная навигация"
-        >
+        <nav className="hidden items-center gap-1 md:flex" aria-label="Главная навигация">
           {links.map((l) => (
             <Link
               key={l.href}
@@ -62,12 +58,13 @@ export default function Navbar() {
           ))}
         </nav>
 
-        {/* Правый блок: авторизация (desktop) */}
-        <div className="hidden md:block">
+        {/* Правый блок: Назад + Авторизация (desktop) */}
+        <div className="hidden items-center gap-2 md:flex">
+          <BackButton />
           <AuthControls />
         </div>
 
-        {/* Кнопка бургера (mobile) */}
+        {/* Бургер (mobile) */}
         <button
           type="button"
           className="inline-flex items-center justify-center rounded-md p-2 text-gray-700 hover:bg-gray-100 md:hidden"
@@ -76,12 +73,10 @@ export default function Navbar() {
           onClick={() => setOpen((v) => !v)}
         >
           {!open ? (
-            // icon: menu
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
               <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
             </svg>
           ) : (
-            // icon: close
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
               <path d="M6 6l12 12M18 6l-12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
             </svg>
@@ -89,10 +84,10 @@ export default function Navbar() {
         </button>
       </div>
 
-      {/* Мобильное выпадающее меню */}
+      {/* Мобильное меню: ссылки + Назад + Auth */}
       <div className={`md:hidden ${open ? "block" : "hidden"}`}>
         <div className="border-t bg-white">
-          <nav className="mx-auto flex max-w-screen-xl flex-col gap-1 px-4 py-3" aria-label="Мобильная навигация">
+          <nav className="mx-auto flex max-w-screen-xl flex-col gap-2 px-4 py-3" aria-label="Мобильная навигация">
             {links.map((l) => (
               <Link
                 key={l.href}
@@ -105,7 +100,8 @@ export default function Navbar() {
                 {l.label}
               </Link>
             ))}
-            <div className="pt-2">
+            <div className="mt-2 flex items-center gap-2">
+              <BackButton />
               <AuthControls />
             </div>
           </nav>
