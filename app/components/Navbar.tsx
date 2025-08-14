@@ -3,11 +3,14 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import AuthControls from "./AuthControls";
+import { supabase } from "../../lib/supabase/client";
+import type { Profile } from "../../lib/supabase/client";
 
 type NavLink = { href: `/${string}` | "/"; label: string };
 
-const links: NavLink[] = [
+const baseLinks: NavLink[] = [
   { href: "/", label: "Главная" },
   { href: "/acts-government", label: "Акты правительства" },
   { href: "/acts-court", label: "Акты суда" },
@@ -20,6 +23,68 @@ const links: NavLink[] = [
 export default function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
+
+  // состояние авторизации/роли
+  const [loggedIn, setLoggedIn] = useState<boolean>(false);
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const [ready, setReady] = useState<boolean>(false);
+
+  useEffect(() => {
+    let mounted = true;
+
+    // 1) читаем сессию
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!mounted) return;
+      const hasSession = !!session;
+      setLoggedIn(hasSession);
+
+      // 2) если есть — подтягиваем роль
+      if (hasSession && session?.user?.id) {
+        const { data } = await supabase
+          .from("profiles")
+          .select("gov_role")
+          .eq("id", session.user.id)
+          .maybeSingle();
+        const me = (data ?? null) as Pick<Profile, "gov_role"> | null;
+        setIsAdmin(me?.gov_role === "TECH_ADMIN");
+      } else {
+        setIsAdmin(false);
+      }
+      setReady(true);
+    });
+
+    // подписка на изменения сессии
+    const { data } = supabase.auth.onAuthStateChange(async (_evt, session) => {
+      if (!mounted) return;
+      const hasSession = !!session;
+      setLoggedIn(hasSession);
+      if (hasSession && session?.user?.id) {
+        const { data } = await supabase
+          .from("profiles")
+          .select("gov_role")
+          .eq("id", session.user.id)
+          .maybeSingle();
+        const me = (data ?? null) as Pick<Profile, "gov_role"> | null;
+        setIsAdmin(me?.gov_role === "TECH_ADMIN");
+      } else {
+        setIsAdmin(false);
+      }
+    });
+
+    return () => {
+      mounted = false;
+      data.subscription.unsubscribe();
+    };
+  }, []);
+
+  // формируем финальный список ссылок
+  const links: NavLink[] = useMemo(() => {
+    const out = [...baseLinks];
+    if (loggedIn) out.push({ href: "/account/appointments", label: "Мои записи" });
+    if (isAdmin) out.push({ href: "/admin", label: "Админ" });
+    return out;
+  }, [loggedIn, isAdmin]);
+
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(href + "/");
 
@@ -52,7 +117,7 @@ export default function Navbar() {
           ))}
         </nav>
 
-        {/* Правый блок: Назад + AuthControls */}
+        {/* Правый край: Назад + AuthControls */}
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -62,7 +127,8 @@ export default function Navbar() {
           >
             Назад
           </button>
-          <AuthControls />
+          {/* не рендерим контролы, пока не прочитали сессию — чтобы не мигало */}
+          {ready && <AuthControls />}
         </div>
       </div>
 
