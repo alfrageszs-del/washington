@@ -3,26 +3,24 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase/client";
-import type { Session } from "@supabase/supabase-js";
 
 export default function AuthControls() {
-  const [session, setSession] = useState<Session | null>(null);
-  const [ready, setReady] = useState(false);
+  // По умолчанию считаем, что не авторизован — будут "Войти/Регистрация".
+  const [loggedIn, setLoggedIn] = useState<boolean>(false);
 
   useEffect(() => {
     let mounted = true;
 
-    // начальная сессия
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    // 1) разово читаем пользователя
+    supabase.auth.getUser().then(({ data }) => {
       if (!mounted) return;
-      setSession(session ?? null);
-      setReady(true);
+      setLoggedIn(!!data.user);
     });
 
-    // подписка на изменения сессии
-    const { data } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    // 2) реагируем на любые изменения сессии
+    const { data } = supabase.auth.onAuthStateChange((_evt, session) => {
       if (!mounted) return;
-      setSession(newSession ?? null);
+      setLoggedIn(!!session?.user);
     });
 
     return () => {
@@ -31,11 +29,8 @@ export default function AuthControls() {
     };
   }, []);
 
-  // пока не знаем — ничего не показываем, чтобы не мигало
-  if (!ready) return null;
-
-  // если авторизован — ТОЛЬКО «Профиль»
-  if (session) {
+  if (loggedIn) {
+    // Авторизован → показываем ТОЛЬКО "Профиль"
     return (
       <a
         href="/account"
@@ -46,7 +41,7 @@ export default function AuthControls() {
     );
   }
 
-  // если не авторизован — «Войти» + «Регистрация»
+  // Не авторизован → "Войти" + "Регистрация"
   return (
     <div className="flex items-center gap-2">
       <a
