@@ -24,51 +24,38 @@ export default function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
 
-  // состояние авторизации/роли
+  // кто вошёл / админ ли
   const [loggedIn, setLoggedIn] = useState<boolean>(false);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
-  const [ready, setReady] = useState<boolean>(false);
 
   useEffect(() => {
     let mounted = true;
 
-    // 1) читаем сессию
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!mounted) return;
-      const hasSession = !!session;
-      setLoggedIn(hasSession);
+    const readRole = async (userId: string | undefined) => {
+      if (!userId) { setIsAdmin(false); return; }
+      const { data } = await supabase
+        .from("profiles")
+        .select("gov_role")
+        .eq("id", userId)
+        .maybeSingle();
+      const me = (data ?? null) as Pick<Profile, "gov_role"> | null;
+      setIsAdmin(me?.gov_role === "TECH_ADMIN");
+    };
 
-      // 2) если есть — подтягиваем роль
-      if (hasSession && session?.user?.id) {
-        const { data } = await supabase
-          .from("profiles")
-          .select("gov_role")
-          .eq("id", session.user.id)
-          .maybeSingle();
-        const me = (data ?? null) as Pick<Profile, "gov_role"> | null;
-        setIsAdmin(me?.gov_role === "TECH_ADMIN");
-      } else {
-        setIsAdmin(false);
-      }
-      setReady(true);
+    // стартовая сессия
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!mounted) return;
+      const has = !!session;
+      setLoggedIn(has);
+      readRole(session?.user?.id);
     });
 
-    // подписка на изменения сессии
-    const { data } = supabase.auth.onAuthStateChange(async (_evt, session) => {
+    // обновления сессии
+    const { data } = supabase.auth.onAuthStateChange((_evt, session) => {
       if (!mounted) return;
-      const hasSession = !!session;
-      setLoggedIn(hasSession);
-      if (hasSession && session?.user?.id) {
-        const { data } = await supabase
-          .from("profiles")
-          .select("gov_role")
-          .eq("id", session.user.id)
-          .maybeSingle();
-        const me = (data ?? null) as Pick<Profile, "gov_role"> | null;
-        setIsAdmin(me?.gov_role === "TECH_ADMIN");
-      } else {
-        setIsAdmin(false);
-      }
+      const has = !!session;
+      setLoggedIn(has);
+      readRole(session?.user?.id);
     });
 
     return () => {
@@ -77,7 +64,6 @@ export default function Navbar() {
     };
   }, []);
 
-  // формируем финальный список ссылок
   const links: NavLink[] = useMemo(() => {
     const out = [...baseLinks];
     if (loggedIn) out.push({ href: "/account/appointments", label: "Мои записи" });
@@ -99,7 +85,7 @@ export default function Navbar() {
           </span>
         </Link>
 
-        {/* Навигация (десктоп) */}
+        {/* Навигация (desktop) */}
         <nav className="hidden lg:flex items-center gap-1" aria-label="Разделы">
           {links.map((l) => (
             <Link
@@ -117,7 +103,7 @@ export default function Navbar() {
           ))}
         </nav>
 
-        {/* Правый край: Назад + AuthControls */}
+        {/* Правый край: Назад + Профиль/Войти/Регистрация */}
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -127,12 +113,12 @@ export default function Navbar() {
           >
             Назад
           </button>
-          {/* не рендерим контролы, пока не прочитали сессию — чтобы не мигало */}
-          {ready && <AuthControls />}
+          {/* ВАЖНО: рендерим всегда — сам AuthControls решает, что показать */}
+          <AuthControls />
         </div>
       </div>
 
-      {/* Навигация (моб.) */}
+      {/* Навигация (mobile) */}
       <nav
         className="lg:hidden flex items-center gap-1 overflow-x-auto px-4 pb-2"
         aria-label="Разделы (моб.)"
