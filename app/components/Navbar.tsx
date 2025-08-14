@@ -1,7 +1,9 @@
+// app/components/Navbar.tsx
 "use client";
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import AuthControls from "./AuthControls";
 
 type NavLink = { href: `/${string}` | "/"; label: string };
 
@@ -18,8 +20,7 @@ const links: NavLink[] = [
 export default function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
-
-  const active = (href: string) =>
+  const isActive = (href: string) =>
     pathname === href || pathname.startsWith(href + "/");
 
   return (
@@ -33,7 +34,7 @@ export default function Navbar() {
           </span>
         </Link>
 
-        {/* Центр: навигация как «чипы» */}
+        {/* Навигация (десктоп) */}
         <nav className="hidden lg:flex items-center gap-1" aria-label="Разделы">
           {links.map((l) => (
             <Link
@@ -41,7 +42,7 @@ export default function Navbar() {
               href={l.href}
               className={[
                 "px-3 py-2 rounded-lg text-sm transition shadow-sm",
-                active(l.href)
+                isActive(l.href)
                   ? "bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200"
                   : "text-gray-700 hover:bg-gray-100",
               ].join(" ")}
@@ -51,7 +52,7 @@ export default function Navbar() {
           ))}
         </nav>
 
-        {/* Право: группа кнопок */}
+        {/* Правый блок: Назад + AuthControls */}
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -61,28 +62,11 @@ export default function Navbar() {
           >
             Назад
           </button>
-          <Link
-            href="/auth/sign-in"
-            className="px-3 py-2 rounded-lg text-sm border border-gray-300 bg-white hover:bg-gray-50"
-          >
-            Войти
-          </Link>
-          <Link
-            href="/auth/sign-up"
-            className="px-3 py-2 rounded-lg text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm"
-          >
-            Регистрация
-          </Link>
-          <Link
-            href="/account"
-            className="px-3 py-2 rounded-lg text-sm border border-gray-300 bg-white hover:bg-gray-50"
-          >
-            Профиль
-          </Link>
+          <AuthControls />
         </div>
       </div>
 
-      {/* Мобильная навигация (скролл по горизонтали) */}
+      {/* Навигация (моб.) */}
       <nav
         className="lg:hidden flex items-center gap-1 overflow-x-auto px-4 pb-2"
         aria-label="Разделы (моб.)"
@@ -93,7 +77,7 @@ export default function Navbar() {
             href={l.href}
             className={[
               "whitespace-nowrap px-3 py-2 rounded-lg text-sm",
-              active(l.href)
+              isActive(l.href)
                 ? "bg-indigo-600 text-white"
                 : "bg-gray-100 text-gray-800",
             ].join(" ")}
