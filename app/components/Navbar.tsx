@@ -2,16 +2,10 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
-import BackButton from "./BackButton";
-import AuthControls from "./AuthControls";
 
-type NavLink = {
-  href: `/${string}` | "/";
-  label: string;
-  matchPrefix?: boolean;
-};
+type NavLink = { href: `/${string}` | "/"; label: string; matchPrefix?: boolean };
 
 const links: NavLink[] = [
   { href: "/", label: "Главная" },
@@ -23,11 +17,26 @@ const links: NavLink[] = [
   { href: "/appointment", label: "Запись на приём" },
 ];
 
+function BackButton() {
+  const router = useRouter();
+  return (
+    <button
+      type="button"
+      onClick={() => router.back()}
+      className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 hover:bg-gray-50"
+      aria-label="Назад"
+      title="Назад"
+    >
+      Назад
+    </button>
+  );
+}
+
 export default function Navbar() {
   const pathname = usePathname();
-  const [open, setOpen] = useState<boolean>(false);
+  const [open, setOpen] = useState(false);
 
-  const isActive = (l: NavLink): boolean =>
+  const isActive = (l: NavLink) =>
     pathname === l.href || (!!l.matchPrefix && pathname.startsWith(l.href + "/"));
 
   return (
@@ -58,10 +67,27 @@ export default function Navbar() {
           ))}
         </nav>
 
-        {/* Правый блок: Назад + Авторизация (desktop) */}
+        {/* Правый блок: ВСЕГДА видимые кнопки */}
         <div className="hidden items-center gap-2 md:flex">
           <BackButton />
-          <AuthControls />
+          <a
+            href="/auth/sign-in"
+            className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 hover:bg-gray-50"
+          >
+            Войти
+          </a>
+          <a
+            href="/auth/sign-up"
+            className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+          >
+            Регистрация
+          </a>
+          <a
+            href="/account"
+            className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 hover:bg-gray-50"
+          >
+            Профиль
+          </a>
         </div>
 
         {/* Бургер (mobile) */}
@@ -84,7 +110,7 @@ export default function Navbar() {
         </button>
       </div>
 
-      {/* Мобильное меню: ссылки + Назад + Auth */}
+      {/* Мобильное меню: ссылки + ВСЕ кнопки */}
       <div className={`md:hidden ${open ? "block" : "hidden"}`}>
         <div className="border-t bg-white">
           <nav className="mx-auto flex max-w-screen-xl flex-col gap-2 px-4 py-3" aria-label="Мобильная навигация">
@@ -100,9 +126,30 @@ export default function Navbar() {
                 {l.label}
               </Link>
             ))}
-            <div className="mt-2 flex items-center gap-2">
+
+            <div className="mt-2 flex flex-wrap items-center gap-2">
               <BackButton />
-              <AuthControls />
+              <a
+                href="/auth/sign-in"
+                className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 hover:bg-gray-50"
+                onClick={() => setOpen(false)}
+              >
+                Войти
+              </a>
+              <a
+                href="/auth/sign-up"
+                className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+                onClick={() => setOpen(false)}
+              >
+                Регистрация
+              </a>
+              <a
+                href="/account"
+                className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 hover:bg-gray-50"
+                onClick={() => setOpen(false)}
+              >
+                Профиль
+              </a>
             </div>
           </nav>
         </div>
