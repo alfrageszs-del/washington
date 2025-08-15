@@ -23,6 +23,8 @@ const roleRu: Record<Profile["gov_role"], string> = {
   PROSECUTOR: "Прокурор",
   JUDGE: "Судья",
   TECH_ADMIN: "Тех. администратор",
+    ATTORNEY_GENERAL: "Генеральный прокурор", // NEW
+    CHIEF_JUSTICE: "Главный судья", // NEW
 };
 
 export default function CourtActView({ params }: { params: { id: string } }) {

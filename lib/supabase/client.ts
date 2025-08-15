@@ -20,7 +20,22 @@ export const FactionLabel: Record<Faction, string> = {
   JUDICIAL: "Судейский корпус",
 };
 
-export type GovRole = "NONE" | "PROSECUTOR" | "JUDGE" | "TECH_ADMIN";
+export type GovRole =
+  | "NONE"
+  | "PROSECUTOR"
+  | "JUDGE"
+  | "TECH_ADMIN"
+  | "ATTORNEY_GENERAL"  // NEW
+  | "CHIEF_JUSTICE";    // NEW
+
+export type LeaderRole =
+  | "GOVERNOR"
+  | "DIRECTOR_WN"
+  | "DIRECTOR_FIB"
+  | "CHIEF_LSPD"
+  | "SHERIFF_LSCSD"
+  | "CHIEF_EMS"
+  | "COLONEL_SANG";
 
 export type Department =
   | "GOVERNOR" | "VICE_GOVERNOR" | "MIN_FINANCE" | "MIN_JUSTICE"
@@ -39,7 +54,12 @@ export const DepartmentLabel: Record<Department, string> = {
 };
 
 export type AppointmentStatus = "PENDING" | "APPROVED" | "REJECTED" | "DONE" | "CANCELLED";
-export type VerificationKind = "PROSECUTOR" | "JUDGE" | "ACCOUNT";
+export type VerificationKind =
+  | "PROSECUTOR"
+  | "JUDGE"
+  | "ACCOUNT"
+  | "OFFICE"          // NEW: назначение в департамент/офис
+  | "FACTION_MEMBER"; // NEW: вступление в фракцию
 export type VerificationStatus = "PENDING" | "APPROVED" | "REJECTED";
 
 export type Profile = {
@@ -50,9 +70,12 @@ export type Profile = {
   faction: Faction;
   gov_role: GovRole;
   is_verified: boolean;
+  leader_role?: LeaderRole | null;   // NEW
+  office_role?: Department | null;   // NEW
   created_at?: string;
   updated_at?: string;
 };
+
 
 export type Appointment = {
   id: string;
@@ -72,9 +95,11 @@ export type VerificationRequest = {
   kind: VerificationKind;
   comment: string | null;
   status: VerificationStatus;
+  target_department?: Department | null; // NEW (для OFFICE)
+  target_faction?: Faction | null;       // NEW (для FACTION_MEMBER)
   created_at?: string;
   updated_at?: string;
-};
+}
 
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
