@@ -6,20 +6,9 @@ import {
   type Session,
 } from "@supabase/supabase-js";
 
-/* =========================
-   Доменные типы и словари
-   ========================= */
-
+/** ==== Доменные типы ==== */
 export type Faction =
-  | "CIVILIAN"
-  | "FIB"
-  | "LSPD"
-  | "LSCSD"
-  | "EMS"
-  | "WN"
-  | "SANG"
-  | "GOV"
-  | "JUDICIAL";
+  | "CIVILIAN" | "FIB" | "LSPD" | "LSCSD" | "EMS" | "WN" | "SANG" | "GOV" | "JUDICIAL";
 
 export const FactionLabel: Record<Faction, string> = {
   CIVILIAN: "Гражданский",
@@ -36,15 +25,8 @@ export const FactionLabel: Record<Faction, string> = {
 export type GovRole = "NONE" | "PROSECUTOR" | "JUDGE" | "TECH_ADMIN";
 
 export type Department =
-  | "GOVERNOR"
-  | "VICE_GOVERNOR"
-  | "MIN_FINANCE"
-  | "MIN_JUSTICE"
-  | "BAR"
-  | "GOV_STAFF"
-  | "MIN_DEFENSE"
-  | "MIN_SECURITY"
-  | "MIN_HEALTH";
+  | "GOVERNOR" | "VICE_GOVERNOR" | "MIN_FINANCE" | "MIN_JUSTICE"
+  | "BAR" | "GOV_STAFF" | "MIN_DEFENSE" | "MIN_SECURITY" | "MIN_HEALTH";
 
 export const DepartmentLabel: Record<Department, string> = {
   GOVERNOR: "Губернатор",
@@ -58,13 +40,7 @@ export const DepartmentLabel: Record<Department, string> = {
   MIN_HEALTH: "Министерство здравоохранения",
 };
 
-export type AppointmentStatus =
-  | "PENDING"
-  | "APPROVED"
-  | "REJECTED"
-  | "DONE"
-  | "CANCELLED";
-
+export type AppointmentStatus = "PENDING" | "APPROVED" | "REJECTED" | "DONE" | "CANCELLED";
 export type VerificationKind = "PROSECUTOR" | "JUDGE" | "ACCOUNT";
 export type VerificationStatus = "PENDING" | "APPROVED" | "REJECTED";
 
@@ -102,17 +78,13 @@ export type VerificationRequest = {
   updated_at?: string;
 };
 
-/* =========================
-   Клиент Supabase (совместимый)
-   ========================= */
-
+/** ==== Клиент ==== */
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 
 export const SUPABASE_CONFIGURED = Boolean(URL && ANON);
 
 function makeThrowingClient(): SupabaseClient {
-  // Прокси, который бросает понятную ошибку если ENV не заданы
   const handler: ProxyHandler<any> = {
     get() {
       throw new Error(
@@ -125,18 +97,11 @@ function makeThrowingClient(): SupabaseClient {
       );
     },
   };
-  // Приводим к типу SupabaseClient, чтобы не сыпались TS-ошибки по проекту
-  // Реальное обращение к методам бросит осмысленную ошибку.
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
   return new Proxy({}, handler) as SupabaseClient;
 }
 
-// ⚠️ экспортируем ИМЕННО "supabase", как ждёт существующий код
 export const supabase: SupabaseClient = SUPABASE_CONFIGURED
-  ? createClient(URL, ANON, {
-      auth: { persistSession: true, autoRefreshToken: true },
-    })
+  ? createClient(URL, ANON, { auth: { persistSession: true, autoRefreshToken: true } })
   : makeThrowingClient();
 
-// На случай, если где-то нужны типы из @supabase/supabase-js напрямую
 export type { SupabaseClient, AuthChangeEvent, Session };
