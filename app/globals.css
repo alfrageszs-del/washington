@@ -1,41 +1,42 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Tailwind v4: один импорт */
+@import "tailwindcss";
 
-/* Базовая «чистая» типографика */
+/* Твои кастомные утилиты: */
 :root {
-  --bg: #f8fafc;        /* slate-50 */
-  --fg: #0f172a;        /* slate-900 */
+  --bg: #f8fafc;  /* slate-50 */
+  --fg: #0f172a;  /* slate-900 */
 }
 
 html, body { height: 100%; }
 body { background: var(--bg); color: var(--fg); }
 
-/* Ссылки как на госуслугах: неядовитые, без подчеркивания */
-a { text-decoration: none; }
-a:hover { text-decoration: underline; }
-
 /* Карточка */
 .card {
-  @apply rounded-2xl border border-slate-200 bg-white shadow-card;
+  @apply rounded-2xl border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,.07)];
 }
 
-/* Пилюля-кнопка (3D-эффект) */
+/* «Пилюли» в шапке */
 .pill {
   @apply inline-flex items-center h-9 rounded-full px-3 text-sm border
-         border-slate-200 bg-white shadow-pill hover:bg-slate-50 transition;
+         border-slate-200 bg-white shadow-[inset_0_-2px_rgba(0,0,0,.08),0_2px_6px_rgba(15,23,42,.06)]
+         hover:bg-slate-50 transition;
 }
 .pill-active {
   @apply inline-flex items-center h-9 rounded-full px-3 text-sm text-white
-         bg-brand-blue border-brand-blue shadow-pill;
+         bg-[#2751FF] border-[#2751FF]
+         shadow-[inset_0_-2px_rgba(0,0,0,.08),0_2px_6px_rgba(15,23,42,.06)];
 }
 
-/* Кнопка основная */
+/* Кнопки */
 .btn-primary {
-  @apply inline-flex items-center gap-2 rounded-lg bg-brand-blue px-4 py-2
+  @apply inline-flex items-center gap-2 rounded-lg bg-[#2751FF] px-4 py-2
          text-white text-sm font-medium hover:bg-indigo-600 transition shadow;
 }
 .btn-ghost {
   @apply inline-flex items-center gap-2 rounded-lg border border-slate-200
          bg-white px-4 py-2 text-sm hover:bg-slate-50 transition;
 }
+
+/* Ссылки без подчёркивания */
+a { text-decoration: none; }
+a:hover { text-decoration: underline; }

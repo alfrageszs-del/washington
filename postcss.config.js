@@ -1,7 +1,7 @@
-// postcss.config.js
+// ESM или CJS — любой формат, вот CJS-вариант:
 module.exports = {
   plugins: {
-    "@tailwindcss/postcss": {},  // ⬅️ вместо "tailwindcss": {}
+    "@tailwindcss/postcss": {},   // ⬅️ ВАЖНО: а не "tailwindcss": {}
     autoprefixer: {},
   },
 };
