@@ -1,27 +1,19 @@
-// app/layout.tsx
-import type { ReactNode } from "react";
+import "./globals.css";
 import Navbar from "./components/Navbar";
+import Footer from "./components/Footer";
 
 export const metadata = {
-  title: "Washington Gosuslugi",
-  description: "RP-портал: госуслуги Вашингтона",
+  title: "Госуслуги Вашингтон",
+  description: "Единый портал государственных услуг Вашингтона",
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ru">
-      <head>
-        {/* CDN Tailwind — так сейчас идёт стиль, без сборки CSS */}
-        <script src="https://cdn.tailwindcss.com"></script>
-      </head>
-      <body className="bg-gray-50 text-gray-900 antialiased">
+      <body className="min-h-screen bg-slate-50 text-slate-900">
         <Navbar />
-        <main className="mx-auto max-w-screen-xl px-4 py-8">{children}</main>
-        <footer className="mt-16 border-t bg-white/70 backdrop-blur">
-          <div className="mx-auto max-w-screen-xl px-4 py-6 text-sm text-gray-500">
-            © {new Date().getFullYear()} Washington Gosuslugi
-          </div>
-        </footer>
+        {children}
+        <Footer />
       </body>
     </html>
   );

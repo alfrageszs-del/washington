@@ -2,6 +2,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import AdminNav from "./_components/AdminNav";
+
 import { supabase } from "../../lib/supabase/client";
 import type {
   Appointment,
@@ -15,6 +17,7 @@ import { DepartmentLabel as DLabel } from "../../lib/supabase/client";
 
 type AppRow = Appointment & { author?: Pick<Profile, "id" | "nickname" | "discord"> };
 type VerRow = VerificationRequest & { author?: Pick<Profile, "id" | "nickname" | "discord"> };
+
 type SimpleProfile = Pick<
   Profile,
   "id" | "nickname" | "static_id" | "discord" | "faction" | "gov_role" | "is_verified"
@@ -31,10 +34,10 @@ export default function AdminDashboard() {
   const [verAccount, setVerAccount] = useState<VerRow[]>([]);
   const [verRoles, setVerRoles] = useState<VerRow[]>([]);
 
-  // NEW: verified roles list
+  // список верифицированных ролей (прокуроры/судьи/тех.админы)
   const [verifiedRoles, setVerifiedRoles] = useState<SimpleProfile[]>([]);
 
-  // NEW: all users + search
+  // все пользователи + поиск
   const [allUsers, setAllUsers] = useState<SimpleProfile[]>([]);
   const [q, setQ] = useState<string>("");
 
@@ -43,23 +46,20 @@ export default function AdminDashboard() {
 
   const isAdmin = useMemo(() => me?.gov_role === "TECH_ADMIN", [me]);
 
+  // поднимаем свой профиль
   useEffect(() => {
     let alive = true;
-
     (async () => {
       setLoading(true);
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
+        const { data: { session } } = await supabase.auth.getSession();
         if (!alive) return;
         const uid = session?.user?.id ?? null;
-        if (!uid) {
-          setMe(null);
-          return;
-        }
+        if (!uid) { setMe(null); return; }
 
-        const { data, error } = await supabase.from("profiles").select("*").eq("id", uid).maybeSingle();
+        const { data, error } = await supabase
+          .from("profiles").select("*")
+          .eq("id", uid).maybeSingle();
 
         if (error) setInfo(error.message);
         setMe((data ?? null) as Profile | null);
@@ -69,83 +69,68 @@ export default function AdminDashboard() {
         if (alive) setLoading(false);
       }
     })();
-
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, []);
 
+  // загрузка всех блоков
   const loadAll = async () => {
-    setInfo("");
-    setLoading(true);
+    setInfo(""); setLoading(true);
     try {
       // appointments
-      let apptQ = supabase
-        .from("appointments")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(300);
+      let apptQ = supabase.from("appointments")
+        .select("*").order("created_at", { ascending: false }).limit(300);
       if (apptDept !== "ALL") apptQ = apptQ.eq("department", apptDept);
       const { data: appts } = await apptQ;
 
       // verification ACCOUNT
-      let verAccQ = supabase
-        .from("verification_requests")
-        .select("*")
-        .eq("kind", "ACCOUNT")
-        .order("created_at", { ascending: false })
-        .limit(300);
-      if (!showAllVer) verAccQ = verAccQ.eq("status", "PENDING");
+      let verAccQ = supabase.from("verification_requests")
+        .select("*").eq("kind","ACCOUNT")
+        .order("created_at",{ascending:false}).limit(300);
+      if (!showAllVer) verAccQ = verAccQ.eq("status","PENDING");
       const { data: vAcc } = await verAccQ;
 
       // verification ROLE
-      let verRoleQ = supabase
-        .from("verification_requests")
-        .select("*")
-        .in("kind", ["PROSECUTOR", "JUDGE"])
-        .order("created_at", { ascending: false })
-        .limit(300);
-      if (!showAllVer) verRoleQ = verRoleQ.eq("status", "PENDING");
+      let verRoleQ = supabase.from("verification_requests")
+        .select("*").in("kind",["PROSECUTOR","JUDGE"])
+        .order("created_at",{ascending:false}).limit(300);
+      if (!showAllVer) verRoleQ = verRoleQ.eq("status","PENDING");
       const { data: vRole } = await verRoleQ;
 
-      // NEW: verified roles list (прокуроры/судьи с is_verified=true + TECH_ADMIN)
+      // verified list
       const { data: vProfiles } = await supabase
         .from("profiles")
         .select("id,nickname,static_id,discord,faction,gov_role,is_verified,created_at")
         .or(
           "and(gov_role.eq.PROSECUTOR,is_verified.eq.true)," +
-            "and(gov_role.eq.JUDGE,is_verified.eq.true)," +
-            "gov_role.eq.TECH_ADMIN"
+          "and(gov_role.eq.JUDGE,is_verified.eq.true)," +
+          "gov_role.eq.TECH_ADMIN"
         )
-        .order("gov_role", { ascending: true })
-        .order("created_at", { ascending: false });
+        .order("gov_role",{ascending:true})
+        .order("created_at",{ascending:false});
 
-      // NEW: all users basic list (покажем последние N и дадим поиск)
+      // all users (последние N)
       const { data: users } = await supabase
         .from("profiles")
         .select("id,nickname,static_id,discord,faction,gov_role,is_verified,created_at")
-        .order("created_at", { ascending: false })
-        .limit(500);
+        .order("created_at",{ascending:false}).limit(500);
 
-      // profiles lookup для авторов заявок/запросов
-      const ids = Array.from(
-        new Set([
-          ...((appts ?? []).map((a) => a.created_by)),
-          ...((vAcc ?? []).map((v) => v.created_by)),
-          ...((vRole ?? []).map((v) => v.created_by)),
-        ])
-      );
+      // authors lookup
+      const ids = Array.from(new Set([
+        ...((appts ?? []).map(a=>a.created_by)),
+        ...((vAcc ?? []).map(v=>v.created_by)),
+        ...((vRole ?? []).map(v=>v.created_by)),
+      ]));
 
-      const map = new Map<string, Pick<Profile, "id" | "nickname" | "discord">>();
+      const map = new Map<string, Pick<Profile,"id"|"nickname"|"discord">>();
       if (ids.length) {
-        const { data: profs } = await supabase.from("profiles").select("id,nickname,discord").in("id", ids);
-        (profs ?? []).forEach((p: any) => map.set(p.id, { id: p.id, nickname: p.nickname, discord: p.discord }));
+        const { data: profs } = await supabase
+          .from("profiles").select("id,nickname,discord").in("id", ids);
+        (profs ?? []).forEach((p:any)=>map.set(p.id,{ id:p.id, nickname:p.nickname, discord:p.discord }));
       }
 
-      setAppointments((appts ?? []).map((a) => ({ ...a, author: map.get(a.created_by) })));
-      setVerAccount((vAcc ?? []).map((v) => ({ ...v, author: map.get(v.created_by) })));
-      setVerRoles((vRole ?? []).map((v) => ({ ...v, author: map.get(v.created_by) })));
-
+      setAppointments((appts ?? []).map(a => ({ ...a, author: map.get(a.created_by) })));
+      setVerAccount((vAcc ?? []).map(v => ({ ...v, author: map.get(v.created_by) })));
+      setVerRoles((vRole ?? []).map(v => ({ ...v, author: map.get(v.created_by) })));
       setVerifiedRoles((vProfiles ?? []) as SimpleProfile[]);
       setAllUsers((users ?? []) as SimpleProfile[]);
     } catch (e: unknown) {
@@ -155,17 +140,13 @@ export default function AdminDashboard() {
     }
   };
 
-  useEffect(() => {
-    if (isAdmin) void loadAll();
-  }, [isAdmin, apptDept, showAllVer]);
+  useEffect(() => { if (isAdmin) void loadAll(); }, [isAdmin, apptDept, showAllVer]);
 
+  // действия
   const setApptStatus = async (id: string, s: AppointmentStatus) => {
     const { error } = await supabase.from("appointments").update({ status: s }).eq("id", id);
-    if (error) {
-      setInfo(error.message);
-      return;
-    }
-    setAppointments((prev) => prev.map((r) => (r.id === id ? { ...r, status: s } : r)));
+    if (error) { setInfo(error.message); return; }
+    setAppointments(prev => prev.map(r => r.id === id ? { ...r, status: s } : r));
   };
 
   const setReqStatus = async (id: string, s: VerificationStatus) => {
@@ -176,43 +157,43 @@ export default function AdminDashboard() {
   const approveAccount = async (v: VerRow) => {
     await setReqStatus(v.id, "APPROVED");
     await supabase.from("profiles").update({ is_verified: true }).eq("id", v.created_by);
-    setVerAccount((prev) => prev.map((x) => (x.id === v.id ? { ...x, status: "APPROVED" } : x)));
+    setVerAccount(prev => prev.map(x => x.id === v.id ? { ...x, status: "APPROVED" } : x));
   };
 
   const rejectAccount = async (v: VerRow) => {
     await setReqStatus(v.id, "REJECTED");
-    setVerAccount((prev) => prev.map((x) => (x.id === v.id ? { ...x, status: "REJECTED" } : x)));
+    setVerAccount(prev => prev.map(x => x.id === v.id ? { ...x, status: "REJECTED" } : x));
   };
 
   const approveRole = async (v: VerRow) => {
     await setReqStatus(v.id, "APPROVED");
     const newRole = v.kind === "PROSECUTOR" ? "PROSECUTOR" : "JUDGE";
     await supabase.from("profiles").update({ gov_role: newRole, is_verified: true }).eq("id", v.created_by);
-    setVerRoles((prev) => prev.map((x) => (x.id === v.id ? { ...x, status: "APPROVED" } : x)));
+    setVerRoles(prev => prev.map(x => x.id === v.id ? { ...x, status: "APPROVED" } : x));
   };
 
   const rejectRole = async (v: VerRow) => {
     await setReqStatus(v.id, "REJECTED");
-    setVerRoles((prev) => prev.map((x) => (x.id === v.id ? { ...x, status: "REJECTED" } : x)));
+    setVerRoles(prev => prev.map(x => x.id === v.id ? { ...x, status: "REJECTED" } : x));
   };
 
-  // NEW: прямая верификация аккаунта из списка пользователей
+  // прямая верификация аккаунта
   const verifyAccountDirect = async (profileId: string, value: boolean) => {
     try {
       const { error } = await supabase.from("profiles").update({ is_verified: value }).eq("id", profileId);
       if (error) throw error;
-      setAllUsers((list) => list.map((u) => (u.id === profileId ? { ...u, is_verified: value } : u)));
+      setAllUsers(list => list.map(u => u.id === profileId ? { ...u, is_verified: value } : u));
     } catch (e: any) {
       alert(e?.message ?? String(e));
     }
   };
 
-  // NEW: фильтр по Static ID (и по нику/дискорду — приятный бонус)
+  // фильтр поиска по StaticID/нику/дискорду
   const filteredUsers = useMemo(() => {
     const s = q.trim().toLowerCase();
     if (!s) return allUsers;
     return allUsers.filter(
-      (u) =>
+      u =>
         (u.static_id || "").toLowerCase().includes(s) ||
         (u.nickname || "").toLowerCase().includes(s) ||
         (u.discord || "").toLowerCase().includes(s)
@@ -221,35 +202,32 @@ export default function AdminDashboard() {
 
   const statusBadge = (s: AppointmentStatus | VerificationStatus) => {
     const cls =
-      s === "APPROVED"
-        ? "bg-green-100 text-green-700"
-        : s === "REJECTED"
-        ? "bg-red-100 text-red-700"
-        : s === "DONE"
-        ? "bg-gray-800 text-white"
-        : s === "CANCELLED"
-        ? "bg-gray-200 text-gray-700"
-        : "bg-yellow-100 text-yellow-800";
+      s === "APPROVED" ? "bg-green-100 text-green-700" :
+      s === "REJECTED" ? "bg-red-100 text-red-700" :
+      s === "DONE"     ? "bg-gray-800 text-white" :
+      s === "CANCELLED"? "bg-gray-200 text-gray-700" :
+                         "bg-yellow-100 text-yellow-800";
     return <span className={`rounded-md px-2 py-0.5 text-xs ${cls}`}>{s}</span>;
   };
 
-  if (loading && !isAdmin) return <p className="px-4 py-6">Загрузка...</p>;
+  if (loading && !isAdmin) return <p className="px-4 py-6">Загрузка…</p>;
   if (!isAdmin) return <p className="px-4 py-6">Доступ запрещён (нужна роль TECH_ADMIN).</p>;
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-6">
+      {/* мини-меню админки */}
+      <AdminNav />
+
+      {/* заголовок + обновить */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-bold">Админ-панель</h1>
         <div className="flex items-center gap-2">
-          <button
-            onClick={loadAll}
-            className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-black"
-          >
+          <button onClick={loadAll} className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-black">
             Обновить
           </button>
           <span className="text-sm text-gray-700">{info}</span>
         </div>
-      </div>
+    </div>
 
       {/* =============== Верифицированные роли =============== */}
       <section className="space-y-3 rounded-2xl border bg-white p-5 shadow-sm">
@@ -267,24 +245,21 @@ export default function AdminDashboard() {
               </tr>
             </thead>
             <tbody>
-              {verifiedRoles.map((p) => (
+              {verifiedRoles.map(p => (
                 <tr key={p.id} className="border-t">
                   <td className="py-2">{p.nickname}</td>
                   <td className="py-2">{p.static_id}</td>
                   <td className="py-2">{p.discord ?? "—"}</td>
                   <td className="py-2">{p.faction}</td>
                   <td className="py-2">
-                    {p.gov_role === "PROSECUTOR" ? "Прокурор" : p.gov_role === "JUDGE" ? "Судья" : "Тех. админ"}
+                    {p.gov_role === "PROSECUTOR" ? "Прокурор" :
+                     p.gov_role === "JUDGE"       ? "Судья"    : "Тех. админ"}
                   </td>
                   <td className="py-2">{p.is_verified ? "да" : "нет"}</td>
                 </tr>
               ))}
               {verifiedRoles.length === 0 && (
-                <tr>
-                  <td className="py-6 text-center text-gray-500" colSpan={6}>
-                    Пусто
-                  </td>
-                </tr>
+                <tr><td className="py-6 text-center text-gray-500" colSpan={6}>Пусто</td></tr>
               )}
             </tbody>
           </table>
@@ -298,7 +273,7 @@ export default function AdminDashboard() {
           <div className="w-80">
             <input
               value={q}
-              onChange={(e) => setQ(e.target.value)}
+              onChange={(e)=>setQ(e.target.value)}
               placeholder="Поиск по Static ID, нику или Discord…"
               className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
             />
@@ -319,7 +294,7 @@ export default function AdminDashboard() {
               </tr>
             </thead>
             <tbody>
-              {filteredUsers.map((u) => (
+              {filteredUsers.map(u => (
                 <tr key={u.id} className="border-t">
                   <td className="py-2">{u.nickname}</td>
                   <td className="py-2">{u.static_id}</td>
@@ -329,28 +304,20 @@ export default function AdminDashboard() {
                   <td className="py-2">{u.is_verified ? "да" : "нет"}</td>
                   <td className="py-2 text-right space-x-2">
                     <button
-                      onClick={() => verifyAccountDirect(u.id, true)}
+                      onClick={()=>verifyAccountDirect(u.id, true)}
                       disabled={u.is_verified}
                       className="rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
-                    >
-                      Верифицировать
-                    </button>
+                    >Верифицировать</button>
                     <button
-                      onClick={() => verifyAccountDirect(u.id, false)}
+                      onClick={()=>verifyAccountDirect(u.id, false)}
                       disabled={!u.is_verified}
                       className="rounded-md bg-gray-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50"
-                    >
-                      Снять
-                    </button>
+                    >Снять</button>
                   </td>
                 </tr>
               ))}
               {filteredUsers.length === 0 && (
-                <tr>
-                  <td className="py-6 text-center text-gray-500" colSpan={7}>
-                    Ничего не найдено
-                  </td>
-                </tr>
+                <tr><td className="py-6 text-center text-gray-500" colSpan={7}>Ничего не найдено</td></tr>
               )}
             </tbody>
           </table>
@@ -366,22 +333,17 @@ export default function AdminDashboard() {
         <div className="flex items-center gap-2">
           <select
             value={apptDept}
-            onChange={(e) => setApptDept(e.target.value as Department | "ALL")}
+            onChange={(e)=>setApptDept(e.target.value as Department | "ALL")}
             className="rounded-md border px-3 py-2 text-sm"
           >
             <option value="ALL">Все подразделения</option>
-            {Object.entries(DLabel).map(([val, label]) => (
-              <option key={val} value={val}>
-                {label}
-              </option>
+            {Object.entries(DLabel).map(([val,label])=>(
+              <option key={val} value={val}>{label}</option>
             ))}
           </select>
+
           <label className="ml-auto flex items-center gap-2 text-sm text-gray-600">
-            <input
-              type="checkbox"
-              checked={showAllVer}
-              onChange={(e) => setShowAllVer(e.target.checked)}
-            />
+            <input type="checkbox" checked={showAllVer} onChange={(e)=>setShowAllVer(e.target.checked)} />
             показывать все статусы в блоках верификации
           </label>
         </div>
@@ -400,53 +362,39 @@ export default function AdminDashboard() {
               </tr>
             </thead>
             <tbody>
-              {appointments.map((r) => (
+              {appointments.map(r => (
                 <tr key={r.id} className="border-t">
                   <td className="py-2">{r.author?.nickname ?? "—"}</td>
                   <td className="py-2">{r.author?.discord ?? "—"}</td>
                   <td className="py-2">{DLabel[r.department]}</td>
                   <td className="py-2">{r.subject}</td>
-                  <td className="py-2">
-                    {r.preferred_datetime ? new Date(r.preferred_datetime).toLocaleString() : "—"}
-                  </td>
+                  <td className="py-2">{r.preferred_datetime ? new Date(r.preferred_datetime).toLocaleString() : "—"}</td>
                   <td className="py-2">{statusBadge(r.status)}</td>
                   <td className="py-2 text-right">
                     <select
                       value={r.status}
-                      onChange={(e) => setApptStatus(r.id, e.target.value as AppointmentStatus)}
+                      onChange={(e)=>setApptStatus(r.id, e.target.value as AppointmentStatus)}
                       className="rounded-md border px-2 py-1"
                     >
-                      {statusOptions.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
+                      {statusOptions.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </td>
                 </tr>
               ))}
               {appointments.length === 0 && (
-                <tr>
-                  <td className="py-6 text-center text-gray-500" colSpan={7}>
-                    Нет записей
-                  </td>
-                </tr>
+                <tr><td className="py-6 text-center text-gray-500" colSpan={7}>Нет записей</td></tr>
               )}
             </tbody>
           </table>
         </div>
       </section>
 
-      {/* =============== Верификация аккаунта заявками =============== */}
+      {/* =============== Верификация аккаунта (заявки) =============== */}
       <section className="space-y-3 rounded-2xl border bg-white p-5 shadow-sm">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">Верификация аккаунта</h2>
           <label className="flex items-center gap-2 text-sm text-gray-600">
-            <input
-              type="checkbox"
-              checked={showAllVer}
-              onChange={(e) => setShowAllVer(e.target.checked)}
-            />
+            <input type="checkbox" checked={showAllVer} onChange={(e)=>setShowAllVer(e.target.checked)} />
             показывать все статусы
           </label>
         </div>
@@ -463,7 +411,7 @@ export default function AdminDashboard() {
               </tr>
             </thead>
             <tbody>
-              {verAccount.map((v) => (
+              {verAccount.map(v => (
                 <tr key={v.id} className="border-t">
                   <td className="py-2">{v.author?.nickname ?? "—"}</td>
                   <td className="py-2">{v.author?.discord ?? "—"}</td>
@@ -471,35 +419,27 @@ export default function AdminDashboard() {
                   <td className="py-2">{statusBadge(v.status)}</td>
                   <td className="py-2 text-right space-x-2">
                     <button
-                      onClick={() => approveAccount(v)}
+                      onClick={()=>approveAccount(v)}
                       disabled={v.status !== "PENDING"}
                       className="rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
-                    >
-                      Одобрить
-                    </button>
+                    >Одобрить</button>
                     <button
-                      onClick={() => rejectAccount(v)}
+                      onClick={()=>rejectAccount(v)}
                       disabled={v.status !== "PENDING"}
                       className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
-                    >
-                      Отклонить
-                    </button>
+                    >Отклонить</button>
                   </td>
                 </tr>
               ))}
               {verAccount.length === 0 && (
-                <tr>
-                  <td className="py-6 text-center text-gray-500" colSpan={5}>
-                    Нет запросов
-                  </td>
-                </tr>
+                <tr><td className="py-6 text-center text-gray-500" colSpan={5}>Нет запросов</td></tr>
               )}
             </tbody>
           </table>
         </div>
       </section>
 
-      {/* =============== Верификация роли заявками =============== */}
+      {/* =============== Верификация роли (прокурор/судья) =============== */}
       <section className="space-y-3 rounded-2xl border bg-white p-5 shadow-sm">
         <h2 className="text-lg font-semibold">Верификация роли (прокурор/судья)</h2>
         <div className="overflow-x-auto">
@@ -514,7 +454,7 @@ export default function AdminDashboard() {
               </tr>
             </thead>
             <tbody>
-              {verRoles.map((v) => (
+              {verRoles.map(v => (
                 <tr key={v.id} className="border-t">
                   <td className="py-2">{v.author?.nickname ?? "—"}</td>
                   <td className="py-2">{v.author?.discord ?? "—"}</td>
@@ -522,28 +462,20 @@ export default function AdminDashboard() {
                   <td className="py-2">{statusBadge(v.status)}</td>
                   <td className="py-2 text-right space-x-2">
                     <button
-                      onClick={() => approveRole(v)}
+                      onClick={()=>approveRole(v)}
                       disabled={v.status !== "PENDING"}
                       className="rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
-                    >
-                      Одобрить
-                    </button>
+                    >Одобрить</button>
                     <button
-                      onClick={() => rejectRole(v)}
+                      onClick={()=>rejectRole(v)}
                       disabled={v.status !== "PENDING"}
                       className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
-                    >
-                      Отклонить
-                    </button>
+                    >Отклонить</button>
                   </td>
                 </tr>
               ))}
               {verRoles.length === 0 && (
-                <tr>
-                  <td className="py-6 text-center text-gray-500" colSpan={5}>
-                    Нет запросов
-                  </td>
-                </tr>
+                <tr><td className="py-6 text-center text-gray-500" colSpan={5}>Нет запросов</td></tr>
               )}
             </tbody>
           </table>
