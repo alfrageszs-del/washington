@@ -1,0 +1,28 @@
+/* app/globals.css */
+
+/* Tailwind */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Базовые цвета/фон в духе госуслуг */
+:root {
+  --bg: #f8fafc;  /* slate-50 */
+  --fg: #0f172a;  /* slate-900 */
+}
+
+html, body {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+/* Улучшения типографики и таблиц */
+table { border-collapse: collapse; }
+th, td { vertical-align: top; }
+
+/* Плавные ховеры по умолчанию для ссылок */
+a { transition: color .15s ease, background-color .15s ease, border-color .15s ease; }
