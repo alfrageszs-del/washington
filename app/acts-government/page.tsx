@@ -1,61 +1,84 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { supabase } from "../../lib/supabase/client";
+import type { Profile } from "../../lib/supabase/client";
 
-type GovAct = {
+type GovActRow = {
   id: string;
+  author_id: string;
   title: string;
   summary: string | null;
   published_at: string;
 };
 
 export default function GovActsPage() {
-  const [acts, setActs] = useState<GovAct[]>([]);
+  const [me, setMe] = useState<Pick<Profile, "id" | "gov_role"> | null>(null);
+  const [acts, setActs] = useState<GovActRow[]>([]);
   const [canCreate, setCanCreate] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [info, setInfo] = useState("");
 
   useEffect(() => {
     let alive = true;
 
     const load = async () => {
       setLoading(true);
+      setInfo("");
 
-      // список опубликованных
-      const { data } = await supabase
+      // 1) список опубликованных (берём author_id, чтобы знать права)
+      const { data: rows, error: selErr } = await supabase
         .from("gov_acts")
-        .select("id,title,summary,published_at")
+        .select("id,author_id,title,summary,published_at")
         .eq("is_published", true)
         .order("published_at", { ascending: false });
 
-      if (alive) setActs((data ?? []) as GovAct[]);
+      if (selErr) setInfo(selErr.message);
+      if (alive) setActs((rows ?? []) as GovActRow[]);
 
-      // проверим право создания (быстро через профиль)
+      // 2) мои права
       const { data: sess } = await supabase.auth.getSession();
       const uid = sess.session?.user?.id;
       if (!uid) {
-        if (alive) setCanCreate(false);
+        if (alive) {
+          setMe(null);
+          setCanCreate(false);
+        }
       } else {
         const { data: p } = await supabase
           .from("profiles")
-          .select("gov_role,is_verified")
+          .select("id,gov_role,is_verified")
           .eq("id", uid)
           .maybeSingle();
+
         if (alive) {
-          setCanCreate(
-            !!p && ((p.gov_role === "PROSECUTOR" && p.is_verified) || p.gov_role === "TECH_ADMIN")
-          );
+          setMe(p ? { id: p.id, gov_role: p.gov_role } : null);
+          setCanCreate(!!p && ((p.gov_role === "PROSECUTOR" && (p as any).is_verified) || p.gov_role === "TECH_ADMIN"));
         }
       }
 
       if (alive) setLoading(false);
     };
 
-    load();
+    void load();
     return () => {
       alive = false;
     };
   }, []);
+
+  const isTechAdmin = me?.gov_role === "TECH_ADMIN";
+  const canEdit = (row: GovActRow) => isTechAdmin || row.author_id === me?.id;
+
+  const onDelete = async (id: string) => {
+    if (!confirm("Удалить акт? Это действие необратимо.")) return;
+    setInfo("");
+    const { error } = await supabase.from("gov_acts").delete().eq("id", id);
+    if (error) {
+      setInfo(error.message);
+      return;
+    }
+    setActs((list) => list.filter((x) => x.id !== id));
+  };
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-6 space-y-6">
@@ -71,6 +94,8 @@ export default function GovActsPage() {
         )}
       </div>
 
+      {info && <p className="text-sm text-red-600">{info}</p>}
+
       {loading ? (
         <p>Загрузка...</p>
       ) : acts.length === 0 ? (
@@ -81,19 +106,40 @@ export default function GovActsPage() {
         <ul className="space-y-3">
           {acts.map((a) => (
             <li key={a.id} className="rounded-2xl border bg-white p-5 shadow-sm">
-              <a href={`/acts-government/${a.id}`} className="group block">
-                <div className="flex items-center justify-between gap-3">
-                  <h3 className="text-base font-semibold group-hover:text-indigo-700">
-                    {a.title}
-                  </h3>
-                  <time className="text-xs text-gray-500">
-                    {new Date(a.published_at).toLocaleString()}
-                  </time>
-                </div>
-                {a.summary && (
-                  <p className="mt-2 text-sm text-gray-700 line-clamp-2">{a.summary}</p>
+              <div className="flex items-start justify-between gap-3">
+                <a href={`/acts-government/${a.id}`} className="group block flex-1">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-base font-semibold group-hover:text-indigo-700">
+                      {a.title}
+                    </h3>
+                    <time className="text-xs text-gray-500">
+                      {new Date(a.published_at).toLocaleString()}
+                    </time>
+                  </div>
+                  {a.summary && (
+                    <p className="mt-2 text-sm text-gray-700 line-clamp-2">{a.summary}</p>
+                  )}
+                </a>
+
+                {me && canEdit(a) && (
+                  <div className="flex shrink-0 items-center gap-2">
+                    <a
+                      href={`/acts-government/${a.id}/edit`}
+                      className="rounded-md border px-3 py-1.5 text-xs hover:bg-gray-50"
+                      title="Редактировать"
+                    >
+                      Редактировать
+                    </a>
+                    <button
+                      onClick={() => onDelete(a.id)}
+                      className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
+                      title="Удалить"
+                    >
+                      Удалить
+                    </button>
+                  </div>
                 )}
-              </a>
+              </div>
             </li>
           ))}
         </ul>
