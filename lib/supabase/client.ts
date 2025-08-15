@@ -1,67 +1,119 @@
-import {
-  createClient,
-  type SupabaseClient,
-  type AuthChangeEvent,
-  type Session,
-} from "@supabase/supabase-js";
+// lib/supabase/client.ts
+import { createClient } from "@supabase/supabase-js";
 
-export type Faction =
-  | "CIVILIAN" | "FIB" | "LSPD" | "LSCSD" | "EMS" | "WN" | "SANG" | "GOV" | "JUDICIAL";
+/* ----------------------------- Supabase client ----------------------------- */
 
-export const FactionLabel: Record<Faction, string> = {
-  CIVILIAN: "Гражданский",
-  FIB: "FIB",
-  LSPD: "LSPD",
-  LSCSD: "LSCSD",
-  EMS: "EMS",
-  WN: "WN",
-  SANG: "SANG",
-  GOV: "GOV",
-  JUDICIAL: "Судейский корпус",
-};
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 
-export type GovRole =
-  | "NONE"
-  | "PROSECUTOR"
-  | "JUDGE"
-  | "TECH_ADMIN"
-  | "ATTORNEY_GENERAL"  // NEW
-  | "CHIEF_JUSTICE";    // NEW
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  // не кидаем ошибку при сборке, но будет видно в консоли браузера
+  // eslint-disable-next-line no-console
+  console.warn(
+    "[supabase] NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY не заданы"
+  );
+}
 
-export type LeaderRole =
-  | "GOVERNOR"
-  | "DIRECTOR_WN"
-  | "DIRECTOR_FIB"
-  | "CHIEF_LSPD"
-  | "SHERIFF_LSCSD"
-  | "CHIEF_EMS"
-  | "COLONEL_SANG";
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+  },
+});
 
+/* ---------------------------------- Типы ---------------------------------- */
+
+/** Департаменты (куда граждане записываются на приём) */
 export type Department =
-  | "GOVERNOR" | "VICE_GOVERNOR" | "MIN_FINANCE" | "MIN_JUSTICE"
-  | "BAR" | "GOV_STAFF" | "MIN_DEFENSE" | "MIN_SECURITY" | "MIN_HEALTH";
+  | "GOVERNOR"
+  | "VICE_GOVERNOR"
+  | "MIN_FINANCE"
+  | "MIN_JUSTICE"
+  | "BAR_ASSOCIATION"
+  | "GOV_STAFF"
+  | "MIN_DEFENSE"
+  | "MIN_SECURITY"
+  | "MIN_HEALTH"
+  | "OTHER";
 
+/** Человеко-читаемые названия департаментов */
 export const DepartmentLabel: Record<Department, string> = {
   GOVERNOR: "Губернатор",
   VICE_GOVERNOR: "Вице-губернатор",
   MIN_FINANCE: "Министерство финансов",
   MIN_JUSTICE: "Министерство юстиции",
-  BAR: "Коллегия адвокатов",
+  BAR_ASSOCIATION: "Коллегия адвокатов",
   GOV_STAFF: "Аппарат правительства",
   MIN_DEFENSE: "Министерство обороны",
   MIN_SECURITY: "Министерство безопасности",
   MIN_HEALTH: "Министерство здравоохранения",
+  OTHER: "Другое",
 };
 
-export type AppointmentStatus = "PENDING" | "APPROVED" | "REJECTED" | "DONE" | "CANCELLED";
-export type VerificationKind =
+/** Фракции игрока (в профиле) */
+export type Faction =
+  | "CIVILIAN"
+  | "GOV"
+  | "COURT"   // судейский корпус
+  | "WN"
+  | "FIB"
+  | "LSPD"
+  | "LSCSD"
+  | "EMS"
+  | "SANG";
+
+/** Лейблы фракций */
+export const FactionLabel: Record<Faction, string> = {
+  CIVILIAN: "Гражданский",
+  GOV: "Правительство",
+  COURT: "Судейский корпус",
+  WN: "WN",
+  FIB: "FIB",
+  LSPD: "LSPD",
+  LSCSD: "LSCSD",
+  EMS: "EMS",
+  SANG: "SANG",
+};
+
+/** Гос-роль (для доступа к отдельным панелям/функциям) */
+export type GovRole =
+  | "NONE"
   | "PROSECUTOR"
   | "JUDGE"
-  | "ACCOUNT"
-  | "OFFICE"          // NEW: назначение в департамент/офис
-  | "FACTION_MEMBER"; // NEW: вступление в фракцию
-export type VerificationStatus = "PENDING" | "APPROVED" | "REJECTED";
+  | "TECH_ADMIN"
+  | "ATTORNEY_GENERAL" // Генеральный прокурор
+  | "CHIEF_JUSTICE";   // Председатель Верховного суда
 
+export const GovRoleLabel: Record<GovRole, string> = {
+  NONE: "Нет",
+  PROSECUTOR: "Прокурор",
+  JUDGE: "Судья",
+  TECH_ADMIN: "Тех. администратор",
+  ATTORNEY_GENERAL: "Генеральный прокурор",
+  CHIEF_JUSTICE: "Председатель Верховного суда",
+};
+
+/** Лидерская роль во фракции */
+export type LeaderRole =
+  | "GOVERNOR"        // Губернатор
+  | "DIRECTOR_WN"     // Директор WN
+  | "DIRECTOR_FIB"    // Директор FIB
+  | "CHIEF_LSPD"      // Шеф LSPD
+  | "SHERIFF_LSCSD"   // Шериф LSCSD
+  | "CHIEF_EMS"       // Главный врач EMS
+  | "COLONEL_SANG";   // Полковник SANG
+
+export const LeaderRoleLabel: Record<LeaderRole, string> = {
+  GOVERNOR: "Губернатор",
+  DIRECTOR_WN: "Директор WN",
+  DIRECTOR_FIB: "Директор FIB",
+  CHIEF_LSPD: "Шеф LSPD",
+  SHERIFF_LSCSD: "Шериф LSCSD",
+  CHIEF_EMS: "Главный врач EMS",
+  COLONEL_SANG: "Полковник SANG",
+};
+
+/** Профиль пользователя */
 export type Profile = {
   id: string;
   nickname: string;
@@ -70,60 +122,92 @@ export type Profile = {
   faction: Faction;
   gov_role: GovRole;
   is_verified: boolean;
-  leader_role?: LeaderRole | null;   // NEW
-  office_role?: Department | null;   // NEW
+  leader_role?: LeaderRole | null;     // лидер фракции (если назначен)
+  office_role?: Department | null;     // «кабинет» (министерство/офис)
   created_at?: string;
   updated_at?: string;
 };
 
+/** Заявка на приём */
+export type AppointmentStatus =
+  | "PENDING"
+  | "APPROVED"
+  | "REJECTED"
+  | "DONE"
+  | "CANCELLED";
 
 export type Appointment = {
   id: string;
-  created_by: string;
+  created_by: string;              // id из auth.users
   department: Department;
   subject: string;
-  details: string | null;
-  preferred_datetime: string | null;
+  preferred_datetime: string | null; // ISO или null
   status: AppointmentStatus;
   created_at?: string;
   updated_at?: string;
 };
 
+/** Правительственные акты (если используешь) */
+export type GovernmentAct = {
+  id: string;
+  author_id: string;
+  title: string;
+  summary: string | null;
+  content: string;
+  source_url: string | null;
+  is_published: boolean;
+  published_at: string;
+  updated_at?: string;
+};
+
+/** Судебные акты */
+export type CourtAct = {
+  id: string;
+  author_id: string;
+  title: string;
+  summary: string | null;
+  content: string;
+  source_url: string | null;
+  is_published: boolean;
+  published_at: string;
+  updated_at?: string;
+};
+
+/** Заявки на верификацию/роль */
+export type VerificationStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+export type VerificationKind =
+  | "ACCOUNT"         // подтверждение аккаунта
+  | "PROSECUTOR"      // роль прокурора
+  | "JUDGE"           // роль судьи
+  | "OFFICE"          // кабинет (департамент)
+  | "FACTION_MEMBER"; // вступление в фракцию
+
 export type VerificationRequest = {
   id: string;
-  created_by: string;
+  created_by: string;                 // id из auth.users
   kind: VerificationKind;
   comment: string | null;
   status: VerificationStatus;
-  target_department?: Department | null; // NEW (для OFFICE)
-  target_faction?: Faction | null;       // NEW (для FACTION_MEMBER)
+  target_department?: Department | null; // для kind='OFFICE'
+  target_faction?: Faction | null;       // для kind='FACTION_MEMBER'
   created_at?: string;
   updated_at?: string;
-}
+};
 
-const URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
+/* ------------------------------ Удобные мапы ------------------------------ */
 
-export const SUPABASE_CONFIGURED = Boolean(URL && ANON);
+export const VerificationStatusLabel: Record<VerificationStatus, string> = {
+  PENDING: "Ожидает",
+  APPROVED: "Одобрено",
+  REJECTED: "Отклонено",
+};
 
-function makeThrowingClient(): SupabaseClient {
-  const handler: ProxyHandler<any> = {
-    get() {
-      throw new Error(
-        "Supabase не сконфигурирован: задайте NEXT_PUBLIC_SUPABASE_URL и NEXT_PUBLIC_SUPABASE_ANON_KEY."
-      );
-    },
-    apply() {
-      throw new Error(
-        "Supabase не сконфигурирован: задайте NEXT_PUBLIC_SUPABASE_URL и NEXT_PUBLIC_SUPABASE_ANON_KEY."
-      );
-    },
-  };
-  return new Proxy({}, handler) as SupabaseClient;
-}
-
-export const supabase: SupabaseClient = SUPABASE_CONFIGURED
-  ? createClient(URL, ANON, { auth: { persistSession: true, autoRefreshToken: true } })
-  : makeThrowingClient();
-
-export type { SupabaseClient, AuthChangeEvent, Session };
+export const AppointmentStatusLabel: Record<AppointmentStatus, string> = {
+  PENDING: "Ожидает",
+  APPROVED: "Одобрено",
+  REJECTED: "Отклонено",
+  DONE: "Завершено",
+  CANCELLED: "Отменено",
+};
+export type { Session, AuthChangeEvent } from "@supabase/supabase-js";
