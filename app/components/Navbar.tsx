@@ -1,4 +1,3 @@
-// app/components/Navbar.tsx
 "use client";
 
 import Link from "next/link";
@@ -18,6 +17,20 @@ const baseLinks: NavLink[] = [
   { href: "/structures", label: "Госструктуры" },
   { href: "/appointment", label: "Запись на приём" },
 ];
+
+// 3D-кнопка (light, с пресс-эффектом)
+const btn3d =
+  "relative inline-flex items-center rounded-xl border border-indigo-200 " +
+  "bg-gradient-to-b from-white to-indigo-50 text-gray-800 " +
+  "shadow-[0_1px_0_#ffffff_inset,0_2px_0_rgba(0,0,0,0.05)] " +
+  "hover:from-white hover:to-indigo-100 " +
+  "active:translate-y-[1px] active:shadow-[0_1px_0_rgba(0,0,0,0.08)_inset] " +
+  "transition px-3 py-2 text-sm";
+
+const btn3dPrimary =
+  "rounded-xl border border-indigo-300 bg-gradient-to-b from-indigo-500 to-indigo-600 " +
+  "text-white shadow-[0_1px_0_rgba(255,255,255,0.2)_inset,0_3px_0_rgba(0,0,0,0.15)] " +
+  "hover:from-indigo-500 hover:to-indigo-700 active:translate-y-[1px] active:shadow-[0_1px_0_rgba(0,0,0,0.25)_inset]";
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -49,11 +62,11 @@ export default function Navbar() {
     return (
       <Link
         href={href}
-        className={`rounded-md px-3 py-2 text-sm transition ${
+        className={
           active
-            ? "bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200"
-            : "text-gray-700 hover:bg-gray-100"
-        }`}
+            ? `${btn3d} ring-1 ring-indigo-200 border-indigo-300 text-indigo-700`
+            : btn3d
+        }
       >
         {label}
       </Link>
@@ -61,14 +74,16 @@ export default function Navbar() {
   };
 
   return (
-    <header className="sticky top-0 z-50 border-b bg-white/80 backdrop-blur shadow-sm">
+    <header className="sticky top-0 z-50 border-b bg-white/80 backdrop-blur">
       <div className="mx-auto flex h-14 w-full max-w-screen-xl items-center justify-between gap-3 px-4">
         <Link href="/" className="flex items-center gap-2">
-          <div className="h-7 w-7 rounded-md bg-indigo-600" />
-          <span className="text-base font-semibold tracking-tight">Washington Gosuslugi</span>
+          <div className="h-7 w-7 rounded-md bg-indigo-600 shadow" />
+          <span className="text-base font-semibold tracking-tight">
+            Washington Gosuslugi
+          </span>
         </Link>
 
-        <nav className="hidden md:flex items-center gap-1">
+        <nav className="hidden md:flex items-center gap-2">
           {baseLinks.map((l) => <LinkBtn key={l.href} {...l} />)}
           {showJustice  && <LinkBtn href="/admin/justice"  label="Юстиция" />}
           {showFactions && <LinkBtn href="/admin/factions" label="Фракции" />}
@@ -77,26 +92,20 @@ export default function Navbar() {
         </nav>
 
         <div className="flex items-center gap-2">
-          <button onClick={()=>router.back()} className="rounded-xl border px-3 py-2 text-sm hover:bg-gray-50">
-            Назад
-          </button>
+          <button onClick={() => router.back()} className={btn3d}>Назад</button>
 
           {!loading && !me && (
             <>
-              <Link href="/auth/sign-in" className="rounded-xl border px-3 py-2 text-sm hover:bg-gray-50">Войти</Link>
-              <Link href="/auth/sign-up" className="rounded-xl bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700">
-                Регистрация
-              </Link>
+              <Link href="/auth/sign-in" className={btn3d}>Войти</Link>
+              <Link href="/auth/sign-up" className={btn3dPrimary}>Регистрация</Link>
             </>
           )}
 
           {!!me && (
-            <Link href="/account" className="rounded-xl border px-3 py-2 text-sm hover:bg-gray-50">Профиль</Link>
+            <Link href="/account" className={btn3d}>Профиль</Link>
           )}
         </div>
       </div>
-
-      {/* Моб. меню можешь оставить как было, либо скопировать логику сверху */}
     </header>
   );
 }
