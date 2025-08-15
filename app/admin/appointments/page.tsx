@@ -8,16 +8,20 @@ import type {
   AppointmentStatus,
   Department,
   Profile,
-  LeaderRole,
 } from "../../../lib/supabase/client";
 import { DepartmentLabel } from "../../../lib/supabase/client";
 
-const statuses: AppointmentStatus[] = ["PENDING","APPROVED","REJECTED","DONE","CANCELLED"];
+const statuses: AppointmentStatus[] = [
+  "PENDING",
+  "APPROVED",
+  "REJECTED",
+  "DONE",
+  "CANCELLED",
+];
 
-// Маппинг некоторых лидерских ролей на департамент (если совпадают по смыслу)
-const deptByLeader: Partial<Record<LeaderRole, Department>> = {
+// спец-кейс для лидеров, у которых департамент можно вывести напрямую
+const deptByLeaderRole: Record<string, Department> = {
   GOVERNOR: "GOVERNOR",
-  // для остальных лидеров (WN/FIB/LSPD/LSCSD/EMS/SANG) используем office_role из профиля
 };
 
 export default function AdminApptsPage() {
@@ -27,36 +31,38 @@ export default function AdminApptsPage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [info, setInfo] = useState<string>("");
 
-  // Забираем мой профиль
+  // профиль
   useEffect(() => {
     (async () => {
       setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setMe(null); setLoading(false); return; }
-      const { data } = await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle();
+      const { data } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .maybeSingle();
       setMe((data ?? null) as Profile | null);
       setLoading(false);
     })();
   }, []);
 
-  const isAdmin = useMemo(() => me?.gov_role === "TECH_ADMIN", [me]);
+  const isAdmin   = useMemo(() => me?.gov_role === "TECH_ADMIN", [me]);
+  const isLeader  = useMemo(() => !!me?.leader_role, [me]);
+  const hasOffice = useMemo(() => !!me?.office_role, [me]);
 
-  // Для не-админов вычисляем одно-единственное «своё» подразделение
+  // пытаемся вычислить «свой» департамент для нелидеров/админов
   const myDept: Department | null = useMemo(() => {
     if (!me) return null;
-
-    // 1) кабинет (министерство/офис), если назначен
-    if (me.office_role) return me.office_role;
-
-    // 2) спец-кейс: губернатор
-    if (me.leader_role && deptByLeader[me.leader_role]) {
-      return deptByLeader[me.leader_role]!;
+    if (me.office_role) return me.office_role;                           // назначенный кабинет
+    if (me.leader_role && deptByLeaderRole[me.leader_role]) {
+      return deptByLeaderRole[me.leader_role];                           // напр. GOVERNOR -> GOVERNOR
     }
-
     return null;
   }, [me]);
 
-  const canSee = isAdmin || !!myDept;
+  // Пускать: тех.админа, любого лидера и любого, у кого назначен кабинет
+  const canSee = isAdmin || isLeader || hasOffice;
 
   const load = async () => {
     if (!canSee) return;
@@ -64,13 +70,24 @@ export default function AdminApptsPage() {
     setInfo("");
     setLoading(true);
 
-    let q = supabase.from("appointments").select("*").order("created_at", { ascending: false }).limit(300);
+    // базовый запрос
+    let q = supabase
+      .from("appointments")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(300);
 
-    // Админ — с фильтром
     if (isAdmin) {
+      // админ — по фильтру
       if (dept !== "ALL") q = q.eq("department", dept);
-    } else if (myDept) {
-      // Лидер/владелец кабинета — только своё
+    } else {
+      // лидер/владелец кабинета — только своё
+      if (!myDept) {
+        // кабинета нет — ничего не показываем, но не режем доступ
+        setRows([]);
+        setLoading(false);
+        return;
+      }
       q = q.eq("department", myDept);
     }
 
@@ -80,16 +97,25 @@ export default function AdminApptsPage() {
     setLoading(false);
   };
 
-  useEffect(() => { if (canSee) load(); }, [canSee, isAdmin, dept, myDept]);
+  useEffect(() => {
+    if (canSee) void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canSee, isAdmin, dept, myDept]);
 
   const setStatus = async (id: string, s: AppointmentStatus) => {
     const { error } = await supabase.from("appointments").update({ status: s }).eq("id", id);
     if (error) { setInfo(error.message); return; }
-    setRows(prev => prev.map(r => r.id === id ? { ...r, status: s } : r));
+    setRows(prev => prev.map(r => (r.id === id ? { ...r, status: s } : r)));
   };
 
   if (loading && !canSee) return <p className="px-4 py-6">Загрузка…</p>;
-  if (!canSee) return <p className="px-4 py-6">Доступ запрещён (нужна роль TECH_ADMIN или назначенный кабинет/лидерство).</p>;
+  if (!canSee) {
+    return (
+      <p className="px-4 py-6">
+        Доступ запрещён (нужна роль TECH_ADMIN или лидерская роль/назначенный кабинет).
+      </p>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 px-4 py-6">
@@ -97,7 +123,6 @@ export default function AdminApptsPage() {
         <h1 className="text-2xl font-bold">
           Заявки на приём {isAdmin ? "(админ)" : "(моё подразделение)"}
         </h1>
-
         <div className="flex items-center gap-2">
           <button
             onClick={load}
@@ -109,7 +134,7 @@ export default function AdminApptsPage() {
         </div>
       </div>
 
-      {/* Фильтр доступен только админам */}
+      {/* Блок фильтра: только админам */}
       {isAdmin ? (
         <div className="flex flex-wrap items-center gap-2 rounded-2xl border bg-white p-4">
           <select
@@ -125,7 +150,10 @@ export default function AdminApptsPage() {
         </div>
       ) : (
         <div className="rounded-2xl border bg-white p-4 text-sm text-gray-600">
-          Подразделение: <span className="font-medium">{myDept ? DepartmentLabel[myDept] : "—"}</span>
+          Подразделение:&nbsp;
+          <span className="font-medium">
+            {myDept ? DepartmentLabel[myDept] : "ещё не привязан кабинет (обратитесь к тех.админу)"}
+          </span>
         </div>
       )}
 
@@ -161,7 +189,9 @@ export default function AdminApptsPage() {
             {rows.length === 0 && (
               <tr>
                 <td className="py-6 text-center text-gray-500" colSpan={5}>
-                  Нет записей
+                  {myDept
+                    ? "Нет записей"
+                    : "Кабинет для вашей роли не назначен — заявки появятся после привязки кабинета."}
                 </td>
               </tr>
             )}
