@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { supabase } from "../../lib/supabase/client";
 import type {
   Appointment,
@@ -31,10 +32,10 @@ export default function AdminDashboard() {
   const [verAccount, setVerAccount] = useState<VerRow[]>([]);
   const [verRoles, setVerRoles] = useState<VerRow[]>([]);
 
-  // NEW: verified roles list
+  // verified roles list
   const [verifiedRoles, setVerifiedRoles] = useState<SimpleProfile[]>([]);
 
-  // NEW: all users + search
+  // all users + search
   const [allUsers, setAllUsers] = useState<SimpleProfile[]>([]);
   const [q, setQ] = useState<string>("");
 
@@ -75,6 +76,13 @@ export default function AdminDashboard() {
     };
   }, []);
 
+  // --- флаги доступа к быстрым ссылкам
+  const isLeader = Boolean(me?.leader_role);
+  const canProsecutorPanel = me?.gov_role === "ATTORNEY_GENERAL" || isAdmin;
+  const canJudgePanel = me?.gov_role === "CHIEF_JUSTICE" || isAdmin;
+  const hasOffice = Boolean(me?.office_role);
+  const hasAnyAccess = isAdmin || isLeader || canProsecutorPanel || canJudgePanel || hasOffice;
+
   const loadAll = async () => {
     setInfo("");
     setLoading(true);
@@ -108,7 +116,7 @@ export default function AdminDashboard() {
       if (!showAllVer) verRoleQ = verRoleQ.eq("status", "PENDING");
       const { data: vRole } = await verRoleQ;
 
-      // NEW: verified roles list (прокуроры/судьи с is_verified=true + TECH_ADMIN)
+      // verified roles list (прокуроры/судьи is_verified=true + TECH_ADMIN)
       const { data: vProfiles } = await supabase
         .from("profiles")
         .select("id,nickname,static_id,discord,faction,gov_role,is_verified,created_at")
@@ -120,14 +128,14 @@ export default function AdminDashboard() {
         .order("gov_role", { ascending: true })
         .order("created_at", { ascending: false });
 
-      // NEW: all users basic list (покажем последние N и дадим поиск)
+      // all users basic list
       const { data: users } = await supabase
         .from("profiles")
         .select("id,nickname,static_id,discord,faction,gov_role,is_verified,created_at")
         .order("created_at", { ascending: false })
         .limit(500);
 
-      // profiles lookup для авторов заявок/запросов
+      // profiles lookup
       const ids = Array.from(
         new Set([
           ...((appts ?? []).map((a) => a.created_by)),
@@ -196,7 +204,7 @@ export default function AdminDashboard() {
     setVerRoles((prev) => prev.map((x) => (x.id === v.id ? { ...x, status: "REJECTED" } : x)));
   };
 
-  // NEW: прямая верификация аккаунта из списка пользователей
+  // прямая верификация аккаунта
   const verifyAccountDirect = async (profileId: string, value: boolean) => {
     try {
       const { error } = await supabase.from("profiles").update({ is_verified: value }).eq("id", profileId);
@@ -207,7 +215,6 @@ export default function AdminDashboard() {
     }
   };
 
-  // NEW: фильтр по Static ID (и по нику/дискорду — приятный бонус)
   const filteredUsers = useMemo(() => {
     const s = q.trim().toLowerCase();
     if (!s) return allUsers;
@@ -233,322 +240,400 @@ export default function AdminDashboard() {
     return <span className={`rounded-md px-2 py-0.5 text-xs ${cls}`}>{s}</span>;
   };
 
-  if (loading && !isAdmin) return <p className="px-4 py-6">Загрузка...</p>;
-  if (!isAdmin) return <p className="px-4 py-6">Доступ запрещён (нужна роль TECH_ADMIN).</p>;
+  // загрузка/доступ
+  if (loading) return <p className="px-4 py-6">Загрузка...</p>;
+  if (!hasAnyAccess)
+    return <p className="px-4 py-6">Доступ запрещён (нужна спец-роль или TECH_ADMIN).</p>;
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-bold">Админ-панель</h1>
         <div className="flex items-center gap-2">
-          <button
-            onClick={loadAll}
-            className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-black"
-          >
-            Обновить
-          </button>
+          {isAdmin && (
+            <button
+              onClick={loadAll}
+              className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-black"
+            >
+              Обновить
+            </button>
+          )}
           <span className="text-sm text-gray-700">{info}</span>
         </div>
       </div>
 
-      {/* =============== Верифицированные роли =============== */}
-      <section className="space-y-3 rounded-2xl border bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-semibold">Верифицированные роли</h2>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="text-left text-gray-500">
-              <tr>
-                <th className="py-2">Ник</th>
-                <th className="py-2">Static ID</th>
-                <th className="py-2">Discord</th>
-                <th className="py-2">Фракция</th>
-                <th className="py-2">Роль</th>
-                <th className="py-2">Вериф.</th>
-              </tr>
-            </thead>
-            <tbody>
-              {verifiedRoles.map((p) => (
-                <tr key={p.id} className="border-t">
-                  <td className="py-2">{p.nickname}</td>
-                  <td className="py-2">{p.static_id}</td>
-                  <td className="py-2">{p.discord ?? "—"}</td>
-                  <td className="py-2">{p.faction}</td>
-                  <td className="py-2">
-                    {p.gov_role === "PROSECUTOR" ? "Прокурор" : p.gov_role === "JUDGE" ? "Судья" : "Тех. админ"}
-                  </td>
-                  <td className="py-2">{p.is_verified ? "да" : "нет"}</td>
-                </tr>
-              ))}
-              {verifiedRoles.length === 0 && (
-                <tr>
-                  <td className="py-6 text-center text-gray-500" colSpan={6}>
-                    Пусто
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      {/* =============== Все аккаунты + поиск + верификация =============== */}
-      <section className="space-y-3 rounded-2xl border bg-white p-5 shadow-sm">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Все зарегистрированные аккаунты</h2>
-          <div className="w-80">
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Поиск по Static ID, нику или Discord…"
-              className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-            />
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="text-left text-gray-500">
-              <tr>
-                <th className="py-2">Ник</th>
-                <th className="py-2">Static ID</th>
-                <th className="py-2">Discord</th>
-                <th className="py-2">Фракция</th>
-                <th className="py-2">Роль</th>
-                <th className="py-2">Вериф.</th>
-                <th className="py-2 text-right">Действие</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredUsers.map((u) => (
-                <tr key={u.id} className="border-t">
-                  <td className="py-2">{u.nickname}</td>
-                  <td className="py-2">{u.static_id}</td>
-                  <td className="py-2">{u.discord ?? "—"}</td>
-                  <td className="py-2">{u.faction}</td>
-                  <td className="py-2">{u.gov_role}</td>
-                  <td className="py-2">{u.is_verified ? "да" : "нет"}</td>
-                  <td className="py-2 text-right space-x-2">
-                    <button
-                      onClick={() => verifyAccountDirect(u.id, true)}
-                      disabled={u.is_verified}
-                      className="rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
-                    >
-                      Верифицировать
-                    </button>
-                    <button
-                      onClick={() => verifyAccountDirect(u.id, false)}
-                      disabled={!u.is_verified}
-                      className="rounded-md bg-gray-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50"
-                    >
-                      Снять
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {filteredUsers.length === 0 && (
-                <tr>
-                  <td className="py-6 text-center text-gray-500" colSpan={7}>
-                    Ничего не найдено
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      {/* =============== Заявки на приём =============== */}
-      <section className="space-y-3 rounded-2xl border bg-white p-5 shadow-sm">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Заявки на приём (все)</h2>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <select
-            value={apptDept}
-            onChange={(e) => setApptDept(e.target.value as Department | "ALL")}
-            className="rounded-md border px-3 py-2 text-sm"
+      {/* ===== Быстрые ссылки для спец-ролей ===== */}
+      <div className="flex flex-wrap gap-2">
+        {(isAdmin || isLeader || canProsecutorPanel || canJudgePanel || hasOffice) && (
+          <Link
+            href="/admin"
+            className="rounded-lg border bg-white px-3 py-2 text-sm shadow-sm hover:bg-gray-50"
+            prefetch={false}
           >
-            <option value="ALL">Все подразделения</option>
-            {Object.entries(DLabel).map(([val, label]) => (
-              <option key={val} value={val}>
-                {label}
-              </option>
-            ))}
-          </select>
-          <label className="ml-auto flex items-center gap-2 text-sm text-gray-600">
-            <input
-              type="checkbox"
-              checked={showAllVer}
-              onChange={(e) => setShowAllVer(e.target.checked)}
-            />
-            показывать все статусы в блоках верификации
-          </label>
-        </div>
+            Дашборд
+          </Link>
+        )}
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="text-left text-gray-500">
-              <tr>
-                <th className="py-2">Гражданин</th>
-                <th className="py-2">Discord</th>
-                <th className="py-2">Куда</th>
-                <th className="py-2">Тема</th>
-                <th className="py-2">Желаемая дата</th>
-                <th className="py-2">Статус</th>
-                <th className="py-2 text-right">Действие</th>
-              </tr>
-            </thead>
-            <tbody>
-              {appointments.map((r) => (
-                <tr key={r.id} className="border-t">
-                  <td className="py-2">{r.author?.nickname ?? "—"}</td>
-                  <td className="py-2">{r.author?.discord ?? "—"}</td>
-                  <td className="py-2">{DLabel[r.department]}</td>
-                  <td className="py-2">{r.subject}</td>
-                  <td className="py-2">
-                    {r.preferred_datetime ? new Date(r.preferred_datetime).toLocaleString() : "—"}
-                  </td>
-                  <td className="py-2">{statusBadge(r.status)}</td>
-                  <td className="py-2 text-right">
-                    <select
-                      value={r.status}
-                      onChange={(e) => setApptStatus(r.id, e.target.value as AppointmentStatus)}
-                      className="rounded-md border px-2 py-1"
-                    >
-                      {statusOptions.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                </tr>
-              ))}
-              {appointments.length === 0 && (
-                <tr>
-                  <td className="py-6 text-center text-gray-500" colSpan={7}>
-                    Нет записей
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+        {/* Лидеру — записи его ведомства */}
+        {isLeader && (
+          <Link
+            href="/admin/appointments?scope=leader"
+            className="rounded-lg border bg-white px-3 py-2 text-sm shadow-sm hover:bg-gray-50"
+            prefetch={false}
+          >
+            Записи моего ведомства
+          </Link>
+        )}
 
-      {/* =============== Верификация аккаунта заявками =============== */}
-      <section className="space-y-3 rounded-2xl border bg-white p-5 shadow-sm">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Верификация аккаунта</h2>
-          <label className="flex items-center gap-2 text-sm text-gray-600">
-            <input
-              type="checkbox"
-              checked={showAllVer}
-              onChange={(e) => setShowAllVer(e.target.checked)}
-            />
-            показывать все статусы
-          </label>
-        </div>
+        {/* Если назначен кабинет/министерство — быстрый фильтр по нему */}
+        {hasOffice && me?.office_role && (
+          <Link
+            href={`/admin/appointments?office=${encodeURIComponent(me.office_role)}`}
+            className="rounded-lg border bg-white px-3 py-2 text-sm shadow-sm hover:bg-gray-50"
+            title={`Кабинет: ${DLabel[me.office_role]}`}
+            prefetch={false}
+          >
+            Заявки кабинета: {DLabel[me.office_role]}
+          </Link>
+        )}
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="text-left text-gray-500">
-              <tr>
-                <th className="py-2">Гражданин</th>
-                <th className="py-2">Discord</th>
-                <th className="py-2">Комментарий</th>
-                <th className="py-2">Статус</th>
-                <th className="py-2 text-right">Действие</th>
-              </tr>
-            </thead>
-            <tbody>
-              {verAccount.map((v) => (
-                <tr key={v.id} className="border-t">
-                  <td className="py-2">{v.author?.nickname ?? "—"}</td>
-                  <td className="py-2">{v.author?.discord ?? "—"}</td>
-                  <td className="py-2">{v.comment ?? "—"}</td>
-                  <td className="py-2">{statusBadge(v.status)}</td>
-                  <td className="py-2 text-right space-x-2">
-                    <button
-                      onClick={() => approveAccount(v)}
-                      disabled={v.status !== "PENDING"}
-                      className="rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
-                    >
-                      Одобрить
-                    </button>
-                    <button
-                      onClick={() => rejectAccount(v)}
-                      disabled={v.status !== "PENDING"}
-                      className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
-                    >
-                      Отклонить
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {verAccount.length === 0 && (
-                <tr>
-                  <td className="py-6 text-center text-gray-500" colSpan={5}>
-                    Нет запросов
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+        {/* Генпрокурор / Тех.админ — панель прокуроров */}
+        {canProsecutorPanel && (
+          <Link
+            href="/admin/roles?focus=PROSECUTOR"
+            className="rounded-lg border bg-white px-3 py-2 text-sm shadow-sm hover:bg-gray-50"
+            prefetch={false}
+          >
+            Верификация прокуроров
+          </Link>
+        )}
 
-      {/* =============== Верификация роли заявками =============== */}
-      <section className="space-y-3 rounded-2xl border bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-semibold">Верификация роли (прокурор/судья)</h2>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="text-left text-gray-500">
-              <tr>
-                <th className="py-2">Гражданин</th>
-                <th className="py-2">Discord</th>
-                <th className="py-2">Запрошено</th>
-                <th className="py-2">Статус</th>
-                <th className="py-2 text-right">Действие</th>
-              </tr>
-            </thead>
-            <tbody>
-              {verRoles.map((v) => (
-                <tr key={v.id} className="border-t">
-                  <td className="py-2">{v.author?.nickname ?? "—"}</td>
-                  <td className="py-2">{v.author?.discord ?? "—"}</td>
-                  <td className="py-2">{v.kind}</td>
-                  <td className="py-2">{statusBadge(v.status)}</td>
-                  <td className="py-2 text-right space-x-2">
-                    <button
-                      onClick={() => approveRole(v)}
-                      disabled={v.status !== "PENDING"}
-                      className="rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
-                    >
-                      Одобрить
-                    </button>
-                    <button
-                      onClick={() => rejectRole(v)}
-                      disabled={v.status !== "PENDING"}
-                      className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
-                    >
-                      Отклонить
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {verRoles.length === 0 && (
-                <tr>
-                  <td className="py-6 text-center text-gray-500" colSpan={5}>
-                    Нет запросов
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+        {/* Председатель ВС / Тех.админ — панель судей */}
+        {canJudgePanel && (
+          <Link
+            href="/admin/roles?focus=JUDGE"
+            className="rounded-lg border bg-white px-3 py-2 text-sm shadow-sm hover:bg-gray-50"
+            prefetch={false}
+          >
+            Верификация судей
+          </Link>
+        )}
+
+        {/* Общая страница ролей */}
+        {(isAdmin || canProsecutorPanel || canJudgePanel) && (
+          <Link
+            href="/admin/roles"
+            className="rounded-lg border bg-white px-3 py-2 text-sm shadow-sm hover:bg-gray-50"
+            prefetch={false}
+          >
+            Роли и верификация
+          </Link>
+        )}
+      </div>
+
+      {/* ===== Ниже — блоки видны ТОЛЬКО тех.админу ===== */}
+      {isAdmin && (
+        <>
+          {/* Верифицированные роли */}
+          <section className="space-y-3 rounded-2xl border bg-white p-5 shadow-sm">
+            <h2 className="text-lg font-semibold">Верифицированные роли</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="text-left text-gray-500">
+                  <tr>
+                    <th className="py-2">Ник</th>
+                    <th className="py-2">Static ID</th>
+                    <th className="py-2">Discord</th>
+                    <th className="py-2">Фракция</th>
+                    <th className="py-2">Роль</th>
+                    <th className="py-2">Вериф.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {verifiedRoles.map((p) => (
+                    <tr key={p.id} className="border-t">
+                      <td className="py-2">{p.nickname}</td>
+                      <td className="py-2">{p.static_id}</td>
+                      <td className="py-2">{p.discord ?? "—"}</td>
+                      <td className="py-2">{p.faction}</td>
+                      <td className="py-2">
+                        {p.gov_role === "PROSECUTOR" ? "Прокурор" : p.gov_role === "JUDGE" ? "Судья" : "Тех. админ"}
+                      </td>
+                      <td className="py-2">{p.is_verified ? "да" : "нет"}</td>
+                    </tr>
+                  ))}
+                  {verifiedRoles.length === 0 && (
+                    <tr>
+                      <td className="py-6 text-center text-gray-500" colSpan={6}>
+                        Пусто
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          {/* Все аккаунты + поиск + верификация */}
+          <section className="space-y-3 rounded-2xl border bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Все зарегистрированные аккаунты</h2>
+              <div className="w-80">
+                <input
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder="Поиск по Static ID, нику или Discord…"
+                  className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="text-left text-gray-500">
+                  <tr>
+                    <th className="py-2">Ник</th>
+                    <th className="py-2">Static ID</th>
+                    <th className="py-2">Discord</th>
+                    <th className="py-2">Фракция</th>
+                    <th className="py-2">Роль</th>
+                    <th className="py-2">Вериф.</th>
+                    <th className="py-2 text-right">Действие</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredUsers.map((u) => (
+                    <tr key={u.id} className="border-t">
+                      <td className="py-2">{u.nickname}</td>
+                      <td className="py-2">{u.static_id}</td>
+                      <td className="py-2">{u.discord ?? "—"}</td>
+                      <td className="py-2">{u.faction}</td>
+                      <td className="py-2">{u.gov_role}</td>
+                      <td className="py-2">{u.is_verified ? "да" : "нет"}</td>
+                      <td className="py-2 text-right space-x-2">
+                        <button
+                          onClick={() => verifyAccountDirect(u.id, true)}
+                          disabled={u.is_verified}
+                          className="rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                        >
+                          Верифицировать
+                        </button>
+                        <button
+                          onClick={() => verifyAccountDirect(u.id, false)}
+                          disabled={!u.is_verified}
+                          className="rounded-md bg-gray-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50"
+                        >
+                          Снять
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredUsers.length === 0 && (
+                    <tr>
+                      <td className="py-6 text-center text-gray-500" colSpan={7}>
+                        Ничего не найдено
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          {/* Заявки на приём (все) */}
+          <section className="space-y-3 rounded-2xl border bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Заявки на приём (все)</h2>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <select
+                value={apptDept}
+                onChange={(e) => setApptDept(e.target.value as Department | "ALL")}
+                className="rounded-md border px-3 py-2 text-sm"
+              >
+                <option value="ALL">Все подразделения</option>
+                {Object.entries(DLabel).map(([val, label]) => (
+                  <option key={val} value={val}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+              <label className="ml-auto flex items-center gap-2 text-sm text-gray-600">
+                <input
+                  type="checkbox"
+                  checked={showAllVer}
+                  onChange={(e) => setShowAllVer(e.target.checked)}
+                />
+                показывать все статусы в блоках верификации
+              </label>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="text-left text-gray-500">
+                  <tr>
+                    <th className="py-2">Гражданин</th>
+                    <th className="py-2">Discord</th>
+                    <th className="py-2">Куда</th>
+                    <th className="py-2">Тема</th>
+                    <th className="py-2">Желаемая дата</th>
+                    <th className="py-2">Статус</th>
+                    <th className="py-2 text-right">Действие</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {appointments.map((r) => (
+                    <tr key={r.id} className="border-t">
+                      <td className="py-2">{r.author?.nickname ?? "—"}</td>
+                      <td className="py-2">{r.author?.discord ?? "—"}</td>
+                      <td className="py-2">{DLabel[r.department]}</td>
+                      <td className="py-2">{r.subject}</td>
+                      <td className="py-2">
+                        {r.preferred_datetime ? new Date(r.preferred_datetime).toLocaleString() : "—"}
+                      </td>
+                      <td className="py-2">{statusBadge(r.status)}</td>
+                      <td className="py-2 text-right">
+                        <select
+                          value={r.status}
+                          onChange={(e) => setApptStatus(r.id, e.target.value as AppointmentStatus)}
+                          className="rounded-md border px-2 py-1"
+                        >
+                          {statusOptions.map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+                  {appointments.length === 0 && (
+                    <tr>
+                      <td className="py-6 text-center text-gray-500" colSpan={7}>
+                        Нет записей
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          {/* Верификация аккаунта заявками */}
+          <section className="space-y-3 rounded-2xl border bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Верификация аккаунта</h2>
+              <label className="flex items-center gap-2 text-sm text-gray-600">
+                <input
+                  type="checkbox"
+                  checked={showAllVer}
+                  onChange={(e) => setShowAllVer(e.target.checked)}
+                />
+                показывать все статусы
+              </label>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="text-left text-gray-500">
+                  <tr>
+                    <th className="py-2">Гражданин</th>
+                    <th className="py-2">Discord</th>
+                    <th className="py-2">Комментарий</th>
+                    <th className="py-2">Статус</th>
+                    <th className="py-2 text-right">Действие</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {verAccount.map((v) => (
+                    <tr key={v.id} className="border-t">
+                      <td className="py-2">{v.author?.nickname ?? "—"}</td>
+                      <td className="py-2">{v.author?.discord ?? "—"}</td>
+                      <td className="py-2">{v.comment ?? "—"}</td>
+                      <td className="py-2">{statusBadge(v.status)}</td>
+                      <td className="py-2 text-right space-x-2">
+                        <button
+                          onClick={() => approveAccount(v)}
+                          disabled={v.status !== "PENDING"}
+                          className="rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                        >
+                          Одобрить
+                        </button>
+                        <button
+                          onClick={() => rejectAccount(v)}
+                          disabled={v.status !== "PENDING"}
+                          className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                        >
+                          Отклонить
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {verAccount.length === 0 && (
+                    <tr>
+                      <td className="py-6 text-center text-gray-500" colSpan={5}>
+                        Нет запросов
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          {/* Верификация роли заявками */}
+          <section className="space-y-3 rounded-2xl border bg-white p-5 shadow-sm">
+            <h2 className="text-lg font-semibold">Верификация роли (прокурор/судья)</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="text-left text-gray-500">
+                  <tr>
+                    <th className="py-2">Гражданин</th>
+                    <th className="py-2">Discord</th>
+                    <th className="py-2">Запрошено</th>
+                    <th className="py-2">Статус</th>
+                    <th className="py-2 text-right">Действие</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {verRoles.map((v) => (
+                    <tr key={v.id} className="border-t">
+                      <td className="py-2">{v.author?.nickname ?? "—"}</td>
+                      <td className="py-2">{v.author?.discord ?? "—"}</td>
+                      <td className="py-2">{v.kind}</td>
+                      <td className="py-2">{statusBadge(v.status)}</td>
+                      <td className="py-2 text-right space-x-2">
+                        <button
+                          onClick={() => approveRole(v)}
+                          disabled={v.status !== "PENDING"}
+                          className="rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                        >
+                          Одобрить
+                        </button>
+                        <button
+                          onClick={() => rejectRole(v)}
+                          disabled={v.status !== "PENDING"}
+                          className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                        >
+                          Отклонить
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {verRoles.length === 0 && (
+                    <tr>
+                      <td className="py-6 text-center text-gray-500" colSpan={5}>
+                        Нет запросов
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </>
+      )}
     </div>
   );
 }
