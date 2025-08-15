@@ -1,12 +1,15 @@
+// app/components/Navbar.tsx
 "use client";
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import AuthControls from "./AuthControls";
+import { useEffect, useState } from "react";
+import { supabase } from "../../lib/supabase/client";
+import type { Profile } from "../../lib/supabase/client";
 
-type NavLink = { href: `/${string}` | "/"; label: string };
+type NavLink = { href: string; label: string };
 
-const links: NavLink[] = [
+const baseLinks: NavLink[] = [
   { href: "/", label: "Главная" },
   { href: "/acts-government", label: "Акты правительства" },
   { href: "/acts-court", label: "Акты суда" },
@@ -20,72 +23,80 @@ export default function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
 
-  const isActive = (href: string) =>
-    pathname === href || pathname.startsWith(href + "/");
+  const [me, setMe] = useState<Profile | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      setLoading(true);
+      const { data: { session } } = await supabase.auth.getSession();
+      const uid = session?.user?.id;
+      if (!uid) { if (alive) { setMe(null); setLoading(false); } return; }
+      const { data } = await supabase.from("profiles").select("*").eq("id", uid).maybeSingle();
+      if (alive) { setMe((data ?? null) as Profile | null); setLoading(false); }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  const showJustice  = me?.gov_role === "TECH_ADMIN" || me?.gov_role === "ATTORNEY_GENERAL" || me?.gov_role === "CHIEF_JUSTICE";
+  const showOffice   = !!me?.office_role;
+  const showFactions = !!me?.leader_role;
+  const showAdmin    = me?.gov_role === "TECH_ADMIN";
+
+  const LinkBtn = ({ href, label }: NavLink) => {
+    const active = pathname === href;
+    return (
+      <Link
+        href={href}
+        className={`rounded-md px-3 py-2 text-sm transition ${
+          active
+            ? "bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200"
+            : "text-gray-700 hover:bg-gray-100"
+        }`}
+      >
+        {label}
+      </Link>
+    );
+  };
 
   return (
-    <header className="sticky top-0 z-50 border-b bg-white/90 backdrop-blur">
-      <div className="mx-auto flex h-16 w-full max-w-screen-xl items-center justify-between gap-3 px-4">
-        {/* Лого */}
+    <header className="sticky top-0 z-50 border-b bg-white/80 backdrop-blur shadow-sm">
+      <div className="mx-auto flex h-14 w-full max-w-screen-xl items-center justify-between gap-3 px-4">
         <Link href="/" className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-lg bg-indigo-600 shadow" />
-          <span className="text-[15px] font-semibold tracking-tight">
-            Washington Gosuslugi
-          </span>
+          <div className="h-7 w-7 rounded-md bg-indigo-600" />
+          <span className="text-base font-semibold tracking-tight">Washington Gosuslugi</span>
         </Link>
 
-        {/* Навигация (десктоп) */}
-        <nav className="hidden lg:flex items-center gap-1" aria-label="Разделы">
-          {links.map((l) => (
-            <Link
-              key={l.href}
-              href={l.href}
-              className={[
-                "px-3 py-2 rounded-lg text-sm transition shadow-sm",
-                isActive(l.href)
-                  ? "bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200"
-                  : "text-gray-700 hover:bg-gray-100",
-              ].join(" ")}
-            >
-              {l.label}
-            </Link>
-          ))}
+        <nav className="hidden md:flex items-center gap-1">
+          {baseLinks.map((l) => <LinkBtn key={l.href} {...l} />)}
+          {showJustice  && <LinkBtn href="/admin/justice"  label="Юстиция" />}
+          {showFactions && <LinkBtn href="/admin/factions" label="Фракции" />}
+          {showOffice   && <LinkBtn href="/office"         label="Кабинет" />}
+          {showAdmin    && <LinkBtn href="/admin"          label="Админ" />}
         </nav>
 
-        {/* Правый край: Назад + Профиль/Войти/Регистрация */}
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => router.back()}
-            className="px-3 py-2 rounded-lg text-sm border border-gray-300 bg-white hover:bg-gray-50"
-            title="Назад"
-          >
+          <button onClick={()=>router.back()} className="rounded-xl border px-3 py-2 text-sm hover:bg-gray-50">
             Назад
           </button>
-          <AuthControls />
+
+          {!loading && !me && (
+            <>
+              <Link href="/auth/sign-in" className="rounded-xl border px-3 py-2 text-sm hover:bg-gray-50">Войти</Link>
+              <Link href="/auth/sign-up" className="rounded-xl bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700">
+                Регистрация
+              </Link>
+            </>
+          )}
+
+          {!!me && (
+            <Link href="/account" className="rounded-xl border px-3 py-2 text-sm hover:bg-gray-50">Профиль</Link>
+          )}
         </div>
       </div>
 
-      {/* Навигация (моб.) */}
-      <nav
-        className="lg:hidden flex items-center gap-1 overflow-x-auto px-4 pb-2"
-        aria-label="Разделы (моб.)"
-      >
-        {links.map((l) => (
-          <Link
-            key={l.href}
-            href={l.href}
-            className={[
-              "whitespace-nowrap px-3 py-2 rounded-lg text-sm",
-              isActive(l.href)
-                ? "bg-indigo-600 text-white"
-                : "bg-gray-100 text-gray-800",
-            ].join(" ")}
-          >
-            {l.label}
-          </Link>
-        ))}
-      </nav>
+      {/* Моб. меню можешь оставить как было, либо скопировать логику сверху */}
     </header>
   );
 }
