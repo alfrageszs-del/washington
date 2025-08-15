@@ -11,7 +11,7 @@ import {
   type VerificationKind,
 } from "../../lib/supabase/client";
 
-/** Только те виды заявок, которые нам нужны на этой странице */
+/** Только виды заявок ролей */
 type RoleKind = Extract<VerificationKind, "PROSECUTOR" | "JUDGE">;
 type VRMap = Partial<Record<RoleKind, VerificationRequest>>;
 
@@ -29,18 +29,35 @@ export default function AccountPage() {
 
   const [vr, setVr] = useState<VRMap>({});
 
+  const fetchProfile = async (uid: string) => {
+    const { data } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", uid)
+      .maybeSingle();
+    if (data) {
+      const pr = data as Profile;
+      setNickname(pr.nickname ?? "");
+      setStaticId(pr.static_id ?? "");
+      setDiscord(pr.discord ?? "");
+      setFaction(pr.faction ?? "CIVILIAN");
+      setGovRole(pr.gov_role ?? "NONE");
+      setIsVerified(!!pr.is_verified);
+    }
+  };
+
   const reloadVR = async (uid: string) => {
     const { data, error } = await supabase
       .from("verification_requests")
       .select("*")
       .eq("created_by", uid)
-      .in("kind", ["PROSECUTOR", "JUDGE"]); // сервер сузит, но TS всё равно считает, что там может быть ACCOUNT
+      .in("kind", ["PROSECUTOR", "JUDGE"])
+      .order("created_at", { ascending: false });
 
     if (error) return;
 
     const map: VRMap = {};
     (data as VerificationRequest[] | null)?.forEach((r) => {
-      // Явно сузим тип на стороне TS
       if (r.kind === "PROSECUTOR" || r.kind === "JUDGE") {
         const k: RoleKind = r.kind;
         if (!map[k]) map[k] = r;
@@ -63,23 +80,9 @@ export default function AccountPage() {
       const uid = session.user.id;
       setUserId(uid);
 
-      const { data: p } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", uid)
-        .maybeSingle();
-
-      if (p) {
-        const pr = p as Profile;
-        setNickname(pr.nickname ?? "");
-        setStaticId(pr.static_id ?? "");
-        setDiscord(pr.discord ?? "");
-        setFaction(pr.faction ?? "CIVILIAN");
-        setGovRole(pr.gov_role ?? "NONE");
-        setIsVerified(!!pr.is_verified);
-      }
-
+      await fetchProfile(uid);
       await reloadVR(uid);
+
       setLoading(false);
     });
 
@@ -90,6 +93,8 @@ export default function AccountPage() {
 
   const onSave = async () => {
     if (!userId) return;
+
+    // отправляем новые данные
     await supabase.from("profiles").upsert({
       id: userId,
       nickname: nickname.trim(),
@@ -97,6 +102,13 @@ export default function AccountPage() {
       discord: discord.trim() || null,
       faction,
     });
+
+    // ПОДТЯНЕМ обратно профиль и заявки:
+    // если сработал триггер сброса, здесь уже увидим gov_role = NONE, is_verified = false,
+    // а заявки по ролям уйдут из PENDING/APPROVED -> REJECTED
+    await fetchProfile(userId);
+    await reloadVR(userId);
+
     alert("Сохранено");
   };
 
@@ -116,13 +128,37 @@ export default function AccountPage() {
 
   const sendVerification = async (kind: RoleKind) => {
     if (!userId) return;
+
+    // Сразу блокируем кнопку локально, ставим временную PENDING
+    setVr((prev) => ({
+      ...prev,
+      [kind]: {
+        id: `local-${Date.now()}`,
+        created_by: userId,
+        kind,
+        comment: null,
+        status: "PENDING",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      } as VerificationRequest,
+    }));
+
     const { error } = await supabase
       .from("verification_requests")
       .insert({ created_by: userId, kind, comment: null });
+
     if (error) {
       alert(error.message);
+      // вернуть локальное состояние (разблокировать)
+      setVr((prev) => {
+        const cp = { ...prev };
+        delete cp[kind];
+        return cp;
+      });
       return;
     }
+
+    // Подтянуть реальную запись из БД
     await reloadVR(userId);
     alert("Заявка отправлена.");
   };
