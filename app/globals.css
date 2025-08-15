@@ -1,28 +1,41 @@
-/* app/globals.css */
-
-/* Tailwind */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Базовые цвета/фон в духе госуслуг */
+/* Базовая «чистая» типографика */
 :root {
-  --bg: #f8fafc;  /* slate-50 */
-  --fg: #0f172a;  /* slate-900 */
+  --bg: #f8fafc;        /* slate-50 */
+  --fg: #0f172a;        /* slate-900 */
 }
 
-html, body {
-  height: 100%;
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--fg); }
+
+/* Ссылки как на госуслугах: неядовитые, без подчеркивания */
+a { text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Карточка */
+.card {
+  @apply rounded-2xl border border-slate-200 bg-white shadow-card;
 }
 
-body {
-  background: var(--bg);
-  color: var(--fg);
+/* Пилюля-кнопка (3D-эффект) */
+.pill {
+  @apply inline-flex items-center h-9 rounded-full px-3 text-sm border
+         border-slate-200 bg-white shadow-pill hover:bg-slate-50 transition;
+}
+.pill-active {
+  @apply inline-flex items-center h-9 rounded-full px-3 text-sm text-white
+         bg-brand-blue border-brand-blue shadow-pill;
 }
 
-/* Улучшения типографики и таблиц */
-table { border-collapse: collapse; }
-th, td { vertical-align: top; }
-
-/* Плавные ховеры по умолчанию для ссылок */
-a { transition: color .15s ease, background-color .15s ease, border-color .15s ease; }
+/* Кнопка основная */
+.btn-primary {
+  @apply inline-flex items-center gap-2 rounded-lg bg-brand-blue px-4 py-2
+         text-white text-sm font-medium hover:bg-indigo-600 transition shadow;
+}
+.btn-ghost {
+  @apply inline-flex items-center gap-2 rounded-lg border border-slate-200
+         bg-white px-4 py-2 text-sm hover:bg-slate-50 transition;
+}
