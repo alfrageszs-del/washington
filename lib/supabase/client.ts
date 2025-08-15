@@ -1,4 +1,3 @@
-// lib/supabase/client.ts
 import {
   createClient,
   type SupabaseClient,
@@ -6,7 +5,6 @@ import {
   type Session,
 } from "@supabase/supabase-js";
 
-/** ==== Доменные типы ==== */
 export type Faction =
   | "CIVILIAN" | "FIB" | "LSPD" | "LSCSD" | "EMS" | "WN" | "SANG" | "GOV" | "JUDICIAL";
 
@@ -78,7 +76,6 @@ export type VerificationRequest = {
   updated_at?: string;
 };
 
-/** ==== Клиент ==== */
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 

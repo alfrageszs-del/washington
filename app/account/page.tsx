@@ -1,16 +1,19 @@
-// app/account/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { supabase, type Profile, type Faction, FactionLabel } from "../../lib/supabase/client";
+import { useRouter } from "next/navigation";
+import {
+  supabase,
+  type Profile,
+  type Faction,
+  FactionLabel,
+} from "../../lib/supabase/client";
 
 export default function AccountPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
 
-  // поля профиля
   const [nickname, setNickname] = useState("");
   const [staticId, setStaticId] = useState("");
   const [discord, setDiscord] = useState("");
@@ -23,14 +26,12 @@ export default function AccountPage() {
       if (!alive) return;
       const session = data.session;
       if (!session?.user) {
-        // гость — отправляем на вход
         router.replace("/auth/sign-in?next=/account");
         return;
       }
 
       setUserId(session.user.id);
 
-      // подтягиваем профиль, если есть
       const { data: p } = await supabase
         .from("profiles")
         .select("*")
@@ -66,7 +67,7 @@ export default function AccountPage() {
   };
 
   if (loading) return <p className="px-4 py-6">Загрузка…</p>;
-  if (!userId) return null; // мы уже сделали redirect
+  if (!userId) return null;
 
   return (
     <div className="mx-auto max-w-lg space-y-4 px-4 py-6">
