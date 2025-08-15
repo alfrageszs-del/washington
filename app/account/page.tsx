@@ -1,226 +1,319 @@
+// app/account/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import {
-  supabase,
-  type Profile,
-  type Faction,
-  FactionLabel,
-  type VerificationRequest,
-  type VerificationKind,
+import { useEffect, useState, useMemo } from "react";
+import { supabase } from "../../lib/supabase/client";
+import type {
+  Profile,
+  Faction,
+  VerificationKind,
+  VerificationStatus,
 } from "../../lib/supabase/client";
+import { FactionLabel } from "../../lib/supabase/client";
 
-/** Только виды заявок ролей */
-type RoleKind = Extract<VerificationKind, "PROSECUTOR" | "JUDGE">;
-type VRMap = Partial<Record<RoleKind, VerificationRequest>>;
+type VState = { status: VerificationStatus | "NONE"; id: string | null };
+
+// перевод ролей/статусов
+const roleRu: Record<Profile["gov_role"], string> = {
+  NONE: "Нет",
+  PROSECUTOR: "Прокурор",
+  JUDGE: "Судья",
+  TECH_ADMIN: "Тех. администратор",
+};
+const statusRu = (s: VerificationStatus | "NONE") =>
+  s === "PENDING"
+    ? "ожидает"
+    : s === "APPROVED"
+    ? "подтверждено"
+    : s === "REJECTED"
+    ? "отклонено"
+    : "нет заявки";
+
+const factions: Faction[] = [
+  "CIVILIAN",
+  "FIB",
+  "LSPD",
+  "LSCSD",
+  "EMS",
+  "WN",
+  "SANG",
+  "GOV",
+  "JUDICIAL",
+];
 
 export default function AccountPage() {
-  const router = useRouter();
-  const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [info, setInfo] = useState("");
 
+  // профиль
   const [nickname, setNickname] = useState("");
   const [staticId, setStaticId] = useState("");
   const [discord, setDiscord] = useState("");
   const [faction, setFaction] = useState<Faction>("CIVILIAN");
   const [govRole, setGovRole] = useState<Profile["gov_role"]>("NONE");
-  const [isVerified, setIsVerified] = useState<boolean>(false);
+  const [isVerified, setIsVerified] = useState(false);
 
-  const [vr, setVr] = useState<VRMap>({});
+  // запросы на верификацию
+  const [govReq, setGovReq] = useState<VState>({ status: "NONE", id: null }); // прокурор
+  const [judReq, setJudReq] = useState<VState>({ status: "NONE", id: null }); // судья
 
-  const fetchProfile = async (uid: string) => {
-    const { data } = await supabase
+  const canAskProsecutor = useMemo(
+    () =>
+      faction === "GOV" &&
+      govRole !== "PROSECUTOR" &&
+      govReq.status !== "PENDING" &&
+      govReq.status !== "APPROVED",
+    [faction, govRole, govReq.status]
+  );
+
+  const canAskJudge = useMemo(
+    () =>
+      faction === "JUDICIAL" &&
+      govRole !== "JUDGE" &&
+      judReq.status !== "PENDING" &&
+      judReq.status !== "APPROVED",
+    [faction, govRole, judReq.status]
+  );
+
+  // загрузка
+  useEffect(() => {
+    let alive = true;
+
+    const load = async () => {
+      setLoading(true);
+      setInfo("");
+      try {
+        const { data: sess } = await supabase.auth.getSession();
+        if (!alive) return;
+        const uid = sess.session?.user?.id ?? null;
+        setUserId(uid);
+        if (!uid) return;
+
+        // профиль
+        const { data: pData, error: pErr } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", uid)
+          .maybeSingle();
+        if (pErr) throw pErr;
+
+        if (pData) {
+          const p = pData as Profile;
+          setNickname(p.nickname);
+          setStaticId(p.static_id);
+          setDiscord(p.discord ?? "");
+          setFaction(p.faction);
+          setGovRole(p.gov_role);
+          setIsVerified(p.is_verified);
+        }
+
+        // последние заявки
+        const { data: ver } = await supabase
+          .from("verification_requests")
+          .select("*")
+          .eq("created_by", uid)
+          .order("created_at", { ascending: false })
+          .limit(50);
+
+        if (ver) {
+          const last = (k: VerificationKind) =>
+            (ver as any[]).find((x) => x.kind === k);
+          const pr = last("PROSECUTOR");
+          const jr = last("JUDGE");
+          setGovReq(pr ? { status: pr.status, id: pr.id } : { status: "NONE", id: null });
+          setJudReq(jr ? { status: jr.status, id: jr.id } : { status: "NONE", id: null });
+        }
+      } catch (e: any) {
+        setInfo(e?.message ?? String(e));
+      } finally {
+        if (alive) setLoading(false);
+      }
+    };
+
+    load();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const refreshProfileAndRequests = async (uid: string) => {
+    // перечитать, чтобы UI 100% соответствовал БД
+    const { data: pData } = await supabase
       .from("profiles")
       .select("*")
       .eq("id", uid)
       .maybeSingle();
-    if (data) {
-      const pr = data as Profile;
-      setNickname(pr.nickname ?? "");
-      setStaticId(pr.static_id ?? "");
-      setDiscord(pr.discord ?? "");
-      setFaction(pr.faction ?? "CIVILIAN");
-      setGovRole(pr.gov_role ?? "NONE");
-      setIsVerified(!!pr.is_verified);
+    if (pData) {
+      const p = pData as Profile;
+      setGovRole(p.gov_role);
+      setIsVerified(p.is_verified);
+      setFaction(p.faction);
+      setNickname(p.nickname);
+      setStaticId(p.static_id);
+      setDiscord(p.discord ?? "");
     }
-  };
-
-  const reloadVR = async (uid: string) => {
-    const { data, error } = await supabase
+    const { data: ver } = await supabase
       .from("verification_requests")
       .select("*")
       .eq("created_by", uid)
-      .in("kind", ["PROSECUTOR", "JUDGE"])
-      .order("created_at", { ascending: false });
-
-    if (error) return;
-
-    const map: VRMap = {};
-    (data as VerificationRequest[] | null)?.forEach((r) => {
-      if (r.kind === "PROSECUTOR" || r.kind === "JUDGE") {
-        const k: RoleKind = r.kind;
-        if (!map[k]) map[k] = r;
-      }
-    });
-    setVr(map);
+      .order("created_at", { ascending: false })
+      .limit(50);
+    if (ver) {
+      const last = (k: VerificationKind) =>
+        (ver as any[]).find((x) => x.kind === k);
+      const pr = last("PROSECUTOR");
+      const jr = last("JUDGE");
+      setGovReq(pr ? { status: pr.status, id: pr.id } : { status: "NONE", id: null });
+      setJudReq(jr ? { status: jr.status, id: jr.id } : { status: "NONE", id: null });
+    }
   };
-
-  useEffect(() => {
-    let alive = true;
-
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (!alive) return;
-      const session = data.session;
-      if (!session?.user) {
-        router.replace("/auth/sign-in?next=/account");
-        return;
-      }
-
-      const uid = session.user.id;
-      setUserId(uid);
-
-      await fetchProfile(uid);
-      await reloadVR(uid);
-
-      setLoading(false);
-    });
-
-    return () => {
-      alive = false;
-    };
-  }, [router]);
 
   const onSave = async () => {
-    if (!userId) return;
-
-    // отправляем новые данные
-    await supabase.from("profiles").upsert({
-      id: userId,
-      nickname: nickname.trim(),
-      static_id: staticId.trim(),
-      discord: discord.trim() || null,
-      faction,
-    });
-
-    // ПОДТЯНЕМ обратно профиль и заявки:
-    // если сработал триггер сброса, здесь уже увидим gov_role = NONE, is_verified = false,
-    // а заявки по ролям уйдут из PENDING/APPROVED -> REJECTED
-    await fetchProfile(userId);
-    await reloadVR(userId);
-
-    alert("Сохранено");
-  };
-
-  const reqDisabled: Record<RoleKind, boolean> = useMemo(
-    () => ({
-      PROSECUTOR:
-        faction !== "GOV" ||
-        vr.PROSECUTOR?.status === "PENDING" ||
-        (govRole === "PROSECUTOR" && isVerified),
-      JUDGE:
-        faction !== "JUDICIAL" ||
-        vr.JUDGE?.status === "PENDING" ||
-        (govRole === "JUDGE" && isVerified),
-    }),
-    [faction, vr, govRole, isVerified]
-  );
-
-  const sendVerification = async (kind: RoleKind) => {
-    if (!userId) return;
-
-    // Сразу блокируем кнопку локально, ставим временную PENDING
-    setVr((prev) => ({
-      ...prev,
-      [kind]: {
-        id: `local-${Date.now()}`,
-        created_by: userId,
-        kind,
-        comment: null,
-        status: "PENDING",
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      } as VerificationRequest,
-    }));
-
-    const { error } = await supabase
-      .from("verification_requests")
-      .insert({ created_by: userId, kind, comment: null });
-
-    if (error) {
-      alert(error.message);
-      // вернуть локальное состояние (разблокировать)
-      setVr((prev) => {
-        const cp = { ...prev };
-        delete cp[kind];
-        return cp;
-      });
+    setInfo("");
+    if (!userId) {
+      setInfo("Вы не авторизованы.");
+      return;
+    }
+    if (nickname.trim().length < 3) {
+      setInfo("Ник минимум 3 символа.");
+      return;
+    }
+    if (staticId.trim().length === 0) {
+      setInfo("Static ID обязателен.");
       return;
     }
 
-    // Подтянуть реальную запись из БД
-    await reloadVR(userId);
-    alert("Заявка отправлена.");
+    try {
+      const { error } = await supabase.from("profiles").upsert({
+        id: userId,
+        nickname: nickname.trim(),
+        static_id: staticId.trim(),
+        faction,
+        discord: discord.trim() || null,
+      });
+      if (error) throw error;
+      setInfo("Сохранено.");
+      await refreshProfileAndRequests(userId);
+    } catch (e: any) {
+      setInfo(e?.message ?? String(e));
+    }
   };
 
-  if (loading) return <p className="px-4 py-6">Загрузка…</p>;
-  if (!userId) return null;
+  const requestVerify = async (kind: VerificationKind) => {
+    if (!userId) return;
+    setInfo("");
+
+    // мгновенный локальный апдейт — кнопка исчезнет сразу
+    if (kind === "PROSECUTOR") setGovReq({ status: "PENDING", id: null });
+    if (kind === "JUDGE") setJudReq({ status: "PENDING", id: null });
+
+    try {
+      const { error } = await supabase
+        .from("verification_requests")
+        .insert({ created_by: userId, kind });
+      if (error) throw error;
+
+      // перечитаем с сервера, чтобы статус был 100% точный
+      await refreshProfileAndRequests(userId);
+      setInfo("Запрос отправлен.");
+    } catch (e: any) {
+      // если не вышло — откатываем локальный статус
+      if (kind === "PROSECUTOR") setGovReq((s) => ({ ...s, status: "NONE" }));
+      if (kind === "JUDGE") setJudReq((s) => ({ ...s, status: "NONE" }));
+      setInfo(e?.message ?? String(e));
+    }
+  };
+
+  if (loading) return <p className="px-4 py-6">Загрузка...</p>;
+
+  if (!userId) {
+    return (
+      <div className="mx-auto max-w-md space-y-4 px-4 py-6">
+        <h1 className="text-2xl font-bold">Мой профиль</h1>
+        <div className="rounded-2xl border bg-white p-5 shadow-sm">
+          <p className="text-sm text-gray-700">
+            Вы не авторизованы. Перейдите на{" "}
+            <a href="/auth/sign-in" className="text-indigo-600 hover:underline">
+              страницу входа
+            </a>
+            .
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 px-4 py-6">
       <h1 className="text-2xl font-bold">Мой профиль</h1>
 
-      {/* Профиль */}
-      <div className="space-y-3 rounded-2xl border bg-white p-5 shadow-sm">
-        <label className="block">
-          <span className="mb-1 block text-sm">Nick name</span>
-          <input
-            className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-            value={nickname}
-            onChange={(e) => setNickname(e.target.value)}
-          />
-        </label>
+      {/* Карточка профиля */}
+      <div className="rounded-2xl border bg-white p-5 shadow-sm">
+        <div className="mb-4 flex flex-wrap items-center gap-3 text-sm text-gray-600">
+          <span>
+            <span className="text-gray-500">Роль в системе:</span>{" "}
+            <span className="font-medium">{roleRu[govRole]}</span>
+          </span>
+          <span>•</span>
+          <span>
+            <span className="text-gray-500">Верификация:</span>{" "}
+            <span className="font-medium">{isVerified ? "да" : "нет"}</span>
+          </span>
+        </div>
 
-        <label className="block">
-          <span className="mb-1 block text-sm">Static ID</span>
-          <input
-            className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-            value={staticId}
-            onChange={(e) => setStaticId(e.target.value)}
-          />
-        </label>
+        <div className="space-y-3">
+          <label className="block">
+            <span className="mb-1 block text-sm">Nick name</span>
+            <input
+              className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+              value={nickname}
+              onChange={(e) => setNickname(e.target.value)}
+            />
+          </label>
 
-        <label className="block">
-          <span className="mb-1 block text-sm">Discord</span>
-          <input
-            className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-            value={discord}
-            onChange={(e) => setDiscord(e.target.value)}
-          />
-        </label>
+          <label className="block">
+            <span className="mb-1 block text-sm">Static ID</span>
+            <input
+              className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+              value={staticId}
+              onChange={(e) => setStaticId(e.target.value)}
+            />
+          </label>
 
-        <label className="block">
-          <span className="mb-1 block text-sm">Фракция</span>
-          <select
-            className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-            value={faction}
-            onChange={(e) => setFaction(e.target.value as Faction)}
-          >
-            {Object.entries(FactionLabel).map(([val, label]) => (
-              <option key={val} value={val}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
+          <label className="block">
+            <span className="mb-1 block text-sm">Discord</span>
+            <input
+              className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+              value={discord}
+              onChange={(e) => setDiscord(e.target.value)}
+              placeholder="@username"
+            />
+          </label>
 
-        <div className="pt-2">
-          <button
-            onClick={onSave}
-            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-          >
-            Сохранить
-          </button>
+          <label className="block">
+            <span className="mb-1 block text-sm">Фракция</span>
+            <select
+              className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+              value={faction}
+              onChange={(e) => setFaction(e.target.value as Faction)}
+            >
+              {factions.map((f) => (
+                <option key={f} value={f}>
+                  {FactionLabel[f]}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div className="pt-2">
+            <button
+              onClick={onSave}
+              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+            >
+              Сохранить
+            </button>
+          </div>
         </div>
       </div>
 
@@ -228,62 +321,64 @@ export default function AccountPage() {
       <div className="rounded-2xl border bg-white p-5 shadow-sm">
         <h2 className="mb-2 text-lg font-semibold">Верификация роли</h2>
         <p className="mb-4 text-sm text-gray-600">
-          Для фракции <b>GOV</b> – верификация <b>прокурора</b>. Для{" "}
-          <b>Судейского корпуса</b> – верификация <b>судьи</b>.
+          Для фракции <strong>GOV</strong> — верификация <strong>прокурора</strong>. Для{" "}
+          <strong>Судейского корпуса</strong> — верификация <strong>судьи</strong>.
         </p>
 
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-2">
+          {/* Прокурор */}
           <div className="rounded-xl border p-4">
-            <div className="mb-2 font-medium">Прокурор</div>
+            <div className="font-medium">Прокурор</div>
             <div className="mb-3 text-sm text-gray-600">
-              Статус:{" "}
-              <b>
-                {govRole === "PROSECUTOR" && isVerified
-                  ? "подтверждён"
-                  : vr.PROSECUTOR?.status
-                  ? vr.PROSECUTOR.status.toLowerCase()
-                  : "нет заявки"}
-              </b>
+              Статус: <span className="font-medium">{statusRu(govReq.status)}</span>
             </div>
-            <button
-              onClick={() => sendVerification("PROSECUTOR")}
-              disabled={reqDisabled.PROSECUTOR}
-              className={`rounded-lg px-3 py-2 text-sm ${
-                reqDisabled.PROSECUTOR
-                  ? "cursor-not-allowed border bg-gray-100 text-gray-500"
-                  : "bg-indigo-600 text-white hover:bg-indigo-700"
-              }`}
-            >
-              Запрос верификации прокурора
-            </button>
+
+            {canAskProsecutor ? (
+              <button
+                onClick={() => requestVerify("PROSECUTOR")}
+                className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-black"
+              >
+                Запрос верификации прокурора
+              </button>
+            ) : (
+              <button
+                disabled
+                className="rounded-lg bg-gray-200 px-4 py-2 text-sm font-medium text-gray-600"
+                title="Запрос недоступен"
+              >
+                Запрос недоступен
+              </button>
+            )}
           </div>
 
+          {/* Судья */}
           <div className="rounded-xl border p-4">
-            <div className="mb-2 font-medium">Судья</div>
+            <div className="font-medium">Судья</div>
             <div className="mb-3 text-sm text-gray-600">
-              Статус:{" "}
-              <b>
-                {govRole === "JUDGE" && isVerified
-                  ? "подтверждён"
-                  : vr.JUDGE?.status
-                  ? vr.JUDGE.status.toLowerCase()
-                  : "нет заявки"}
-              </b>
+              Статус: <span className="font-medium">{statusRu(judReq.status)}</span>
             </div>
-            <button
-              onClick={() => sendVerification("JUDGE")}
-              disabled={reqDisabled.JUDGE}
-              className={`rounded-lg px-3 py-2 text-sm ${
-                reqDisabled.JUDGE
-                  ? "cursor-not-allowed border bg-gray-100 text-gray-500"
-                  : "bg-indigo-600 text-white hover:bg-indigo-700"
-              }`}
-            >
-              Запрос верификации судьи
-            </button>
+
+            {canAskJudge ? (
+              <button
+                onClick={() => requestVerify("JUDGE")}
+                className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-black"
+              >
+                Запрос верификации судьи
+              </button>
+            ) : (
+              <button
+                disabled
+                className="rounded-lg bg-gray-200 px-4 py-2 text-sm font-medium text-gray-600"
+                title="Запрос недоступен"
+              >
+                Запрос недоступен
+              </button>
+            )}
           </div>
         </div>
       </div>
+
+      {info && <p className="text-sm text-gray-700">{info}</p>}
     </div>
   );
 }
