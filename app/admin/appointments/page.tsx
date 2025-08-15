@@ -1,105 +1,108 @@
-// app/appointment/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
-import { supabase } from "../../lib/supabase/client";
-import type { Office, AppointmentStatus } from "../../lib/supabase/client";
-import { OfficeLabel } from "../../lib/supabase/client";
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "../../../lib/supabase/client";
+import type { Appointment, AppointmentStatus, Department, Profile } from "../../../lib/supabase/client";
+import { DepartmentLabel } from "../../../lib/supabase/client";
 
-const OFFICES: Office[] = [
-  "GOVERNOR",
-  "VICE_GOVERNOR",
-  "MIN_FINANCE",
-  "MIN_JUSTICE",
-  "BAR_ASSOCIATION",
-  "GOV_STAFF",
-  "MIN_DEFENSE",
-  "MIN_SECURITY",
-  "MIN_HEALTH",
-  "OTHER",
-];
+const statuses: AppointmentStatus[] = ["PENDING","APPROVED","REJECTED","DONE","CANCELLED"];
 
-export default function AppointmentPage() {
-  const [meId, setMeId] = useState<string | null>(null);
-  const [dept, setDept] = useState<Office>("GOVERNOR");
-  const [subject, setSubject] = useState("");
-  const [dt, setDt] = useState<string>(""); // ISO local
+export default function AdminApptsPage() {
+  const [me, setMe] = useState<Profile | null>(null);
+  const [dept, setDept] = useState<Department | "ALL">("ALL");
+  const [rows, setRows] = useState<Appointment[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
   const [info, setInfo] = useState<string>("");
+
+  const canSee = useMemo(() => me?.gov_role === "TECH_ADMIN", [me]);
 
   useEffect(() => {
     (async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      setMeId(session?.user?.id ?? null);
+      setLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setMe(null); setLoading(false); return; }
+      const { data } = await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle();
+      setMe((data ?? null) as Profile | null);
+      setLoading(false);
     })();
   }, []);
 
-  const submit = async () => {
+  const load = async () => {
     setInfo("");
-    if (!meId) { setInfo("Нужно войти."); return; }
-    if (!subject.trim()) { setInfo("Укажите тему обращения."); return; }
-
-    const payload = {
-      department: dept,
-      subject: subject.trim(),
-      preferred_datetime: dt ? new Date(dt).toISOString() : null,
-      status: "PENDING" as AppointmentStatus,
-    };
-
-    const { error } = await supabase.from("appointments").insert(payload);
-    if (error) { setInfo(error.message); return; }
-    setSubject("");
-    setDt("");
-    setDept("GOVERNOR");
-    setInfo("Заявка отправлена.");
+    setLoading(true);
+    let q = supabase.from("appointments").select("*").order("created_at", { ascending: false });
+    if (dept !== "ALL") {
+      q = q.eq("department", dept);
+    }
+    const { data, error } = await q.limit(200);
+    if (error) { setInfo(error.message); setLoading(false); return; }
+    setRows((data ?? []) as Appointment[]);
+    setLoading(false);
   };
 
+  useEffect(() => { if (canSee) load(); }, [canSee, dept]);
+
+  const setStatus = async (id: string, s: AppointmentStatus) => {
+    const { error } = await supabase.from("appointments").update({ status: s }).eq("id", id);
+    if (error) { setInfo(error.message); return; }
+    setRows(prev => prev.map(r => r.id === id ? { ...r, status: s } : r));
+  };
+
+  if (loading && !canSee) return <p>Загрузка…</p>;
+  if (!canSee) return <p>Доступ запрещён (нужна роль TECH_ADMIN).</p>;
+
   return (
-    <div className="mx-auto max-w-2xl space-y-4 px-4 py-6">
-      <h1 className="text-2xl font-bold">Запись на приём</h1>
+    <div className="mx-auto max-w-5xl space-y-4">
+      <h1 className="text-2xl font-bold">Заявки на приём (админ)</h1>
 
-      <div className="rounded-2xl border bg-white p-5 shadow-sm space-y-3">
-        <label className="block text-sm">
-          Подразделение
-          <select
-            className="mt-1 w-full rounded-md border px-3 py-2"
-            value={dept}
-            onChange={(e) => setDept(e.target.value as Office)}
-          >
-            {OFFICES.map((o) => (
-              <option key={o} value={o}>{OfficeLabel[o]}</option>
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl border bg-white p-4">
+        <select
+          value={dept}
+          onChange={(e)=>setDept(e.target.value as Department | "ALL")}
+          className="rounded-md border px-3 py-2 text-sm"
+        >
+          <option value="ALL">Все подразделения</option>
+          {Object.entries(DepartmentLabel).map(([val, label]) => (
+            <option key={val} value={val}>{label}</option>
+          ))}
+        </select>
+        <button onClick={load} className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-black">
+          Обновить
+        </button>
+        {info && <span className="text-sm text-gray-700">{info}</span>}
+      </div>
+
+      <div className="overflow-x-auto rounded-2xl border bg-white">
+        <table className="w-full text-sm">
+          <thead className="text-left text-gray-500">
+            <tr>
+              <th className="py-2 pl-4">Куда</th>
+              <th className="py-2">Тема</th>
+              <th className="py-2">Когда (жел.)</th>
+              <th className="py-2">Статус</th>
+              <th className="py-2 pr-4 text-right">Действия</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(r => (
+              <tr key={r.id} className="border-t">
+                <td className="py-2 pl-4">{DepartmentLabel[r.department]}</td>
+                <td className="py-2">{r.subject}</td>
+                <td className="py-2">{r.preferred_datetime ? new Date(r.preferred_datetime).toLocaleString() : "—"}</td>
+                <td className="py-2">{r.status}</td>
+                <td className="py-2 pr-4 text-right">
+                  <select
+                    value={r.status}
+                    onChange={(e)=>setStatus(r.id, e.target.value as AppointmentStatus)}
+                    className="rounded-md border px-2 py-1"
+                  >
+                    {statuses.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </td>
+              </tr>
             ))}
-          </select>
-        </label>
-
-        <label className="block text-sm">
-          Тема обращения
-          <input
-            className="mt-1 w-full rounded-md border px-3 py-2"
-            value={subject}
-            onChange={(e) => setSubject(e.target.value)}
-            placeholder="Кратко опишите вопрос"
-          />
-        </label>
-
-        <label className="block text-sm">
-          Желаемая дата/время (необязательно)
-          <input
-            type="datetime-local"
-            className="mt-1 w-full rounded-md border px-3 py-2"
-            value={dt}
-            onChange={(e) => setDt(e.target.value)}
-          />
-        </label>
-
-        <div className="flex items-center justify-between">
-          <button
-            onClick={submit}
-            className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-          >
-            Отправить
-          </button>
-          <span className="text-sm text-gray-600">{info}</span>
-        </div>
+          </tbody>
+        </table>
       </div>
     </div>
   );
