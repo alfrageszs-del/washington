@@ -1,4 +1,3 @@
-// components/Navbar.tsx
 "use client";
 
 import Link from "next/link";
@@ -13,57 +12,74 @@ const links: { href: string; label: string }[] = [
   { href: "/wanted",         label: "Розыск" },
   { href: "/structures",     label: "Госструктуры" },
   { href: "/appointment",    label: "Запись" },
-  // ⚠️ УДАЛЕНО: { href: "/justice", label: "Юстиция" },
-  // ⚠️ УДАЛЕНО: { href: "/factions", label: "Фракции" },
 ];
 
 export default function Navbar() {
   const pathname = usePathname();
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b bg-white/90 backdrop-blur">
-      <div className="mx-auto flex h-14 w-full max-w-screen-2xl items-center justify-between gap-3 px-4">
-        <Link href="/" className="shrink-0" aria-label="Госуслуги Вашингтон — на главную">
-          <Logo />
-        </Link>
+    <header className="sticky top-0 z-50 border-b bg-white/60 backdrop-blur supports-[backdrop-filter]:bg-white/50">
+      <div className="mx-auto w-full max-w-screen-2xl px-4">
+        {/* верхняя строка: логотип — меню — кнопки */}
+        <div className="h-16 flex items-center justify-between gap-3">
+          <Link href="/" className="shrink-0" aria-label="На главную">
+            <Logo />
+          </Link>
 
-        {/* desktop */}
-        <nav className="hidden md:flex flex-wrap items-center gap-2" aria-label="Основная навигация">
-          {links.map((l) => {
-            const active = pathname === l.href;
-            return (
-              <Link key={l.href} href={l.href} className={active ? "pill-active" : "pill"}>
-                {l.label}
-              </Link>
-            );
-          })}
-        </nav>
-
-        {/* right controls */}
-        <div className="flex items-center gap-2">
-          <button
-            className="pill"
-            onClick={() => (typeof window !== "undefined" ? window.history.back() : null)}
-            type="button"
+          {/* desktop-меню */}
+          <nav
+            aria-label="Основная навигация"
+            className="hidden md:flex flex-wrap items-center gap-2"
           >
-            Назад
-          </button>
-          <Link href="/account" className="pill">Кабинет</Link>
-          <Link href="/admin" className="pill">Админ</Link>
-        </div>
-      </div>
+            {links.map((l) => {
+              const active = pathname === l.href;
+              return (
+                <Link key={l.href} href={l.href} className={active ? "pill-active" : "pill"}>
+                  {l.label}
+                </Link>
+              );
+            })}
+          </nav>
 
-      {/* mobile scroller */}
-      <div className="md:hidden border-t bg-white">
-        <div className="mx-auto max-w-screen-2xl overflow-x-auto px-4 py-2 flex gap-2" aria-label="Навигация (моб.)">
-          {links.map((l) => {
-            const active = pathname === l.href;
-            return (
-              <Link key={l.href} href={l.href} className={active ? "pill-active" : "pill"}>
-                {l.label}
-              </Link>
-            );
-          })}
+          {/* действия справа */}
+          <div className="hidden md:flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => (typeof window !== "undefined" ? window.history.back() : null)}
+              className="btn-outline"
+              aria-label="Назад"
+            >
+              Назад
+            </button>
+            <Link href="/account" className="btn-primary">Кабинет</Link>
+            <Link href="/admin" className="btn-ghost">Админ</Link>
+          </div>
+        </div>
+
+        {/* мобильная лента-пилюля + действия */}
+        <div className="md:hidden pb-3 flex items-center gap-2">
+          <div className="flex-1 overflow-x-auto no-scrollbar flex gap-2">
+            {links.map((l) => {
+              const active = pathname === l.href;
+              return (
+                <Link key={l.href} href={l.href} className={active ? "pill-active" : "pill"}>
+                  {l.label}
+                </Link>
+              );
+            })}
+          </div>
+          <div className="flex items-center gap-2 pl-1">
+            <button
+              type="button"
+              onClick={() => (typeof window !== "undefined" ? window.history.back() : null)}
+              className="pill"
+              aria-label="Назад"
+            >
+              Назад
+            </button>
+            <Link href="/account" className="pill">Кабинет</Link>
+            <Link href="/admin" className="pill">Админ</Link>
+          </div>
         </div>
       </div>
     </header>
