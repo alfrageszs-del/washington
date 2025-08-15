@@ -92,7 +92,7 @@ export default function SignUpClient() {
             className="w-full rounded-lg border px-3 py-2 text-sm"
             value={nickname}
             onChange={(e) => setNickname(e.target.value)}
-            placeholder="Можно оставить пустым"
+            placeholder="например, John Doe"
           />
         </label>
 
@@ -102,7 +102,7 @@ export default function SignUpClient() {
             className="w-full rounded-lg border px-3 py-2 text-sm"
             value={discord}
             onChange={(e) => setDiscord(e.target.value)}
-            placeholder="@user#0000 (по желанию)"
+            placeholder="@user#0000"
           />
         </label>
 

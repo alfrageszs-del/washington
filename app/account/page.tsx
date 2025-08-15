@@ -1,13 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   supabase,
   type Profile,
   type Faction,
   FactionLabel,
+  type VerificationRequest,
+  type VerificationKind,
 } from "../../lib/supabase/client";
+
+/** Только те виды заявок, которые нам нужны на этой странице */
+type RoleKind = Extract<VerificationKind, "PROSECUTOR" | "JUDGE">;
+type VRMap = Partial<Record<RoleKind, VerificationRequest>>;
 
 export default function AccountPage() {
   const router = useRouter();
@@ -18,6 +24,30 @@ export default function AccountPage() {
   const [staticId, setStaticId] = useState("");
   const [discord, setDiscord] = useState("");
   const [faction, setFaction] = useState<Faction>("CIVILIAN");
+  const [govRole, setGovRole] = useState<Profile["gov_role"]>("NONE");
+  const [isVerified, setIsVerified] = useState<boolean>(false);
+
+  const [vr, setVr] = useState<VRMap>({});
+
+  const reloadVR = async (uid: string) => {
+    const { data, error } = await supabase
+      .from("verification_requests")
+      .select("*")
+      .eq("created_by", uid)
+      .in("kind", ["PROSECUTOR", "JUDGE"]); // сервер сузит, но TS всё равно считает, что там может быть ACCOUNT
+
+    if (error) return;
+
+    const map: VRMap = {};
+    (data as VerificationRequest[] | null)?.forEach((r) => {
+      // Явно сузим тип на стороне TS
+      if (r.kind === "PROSECUTOR" || r.kind === "JUDGE") {
+        const k: RoleKind = r.kind;
+        if (!map[k]) map[k] = r;
+      }
+    });
+    setVr(map);
+  };
 
   useEffect(() => {
     let alive = true;
@@ -30,12 +60,13 @@ export default function AccountPage() {
         return;
       }
 
-      setUserId(session.user.id);
+      const uid = session.user.id;
+      setUserId(uid);
 
       const { data: p } = await supabase
         .from("profiles")
         .select("*")
-        .eq("id", session.user.id)
+        .eq("id", uid)
         .maybeSingle();
 
       if (p) {
@@ -44,8 +75,11 @@ export default function AccountPage() {
         setStaticId(pr.static_id ?? "");
         setDiscord(pr.discord ?? "");
         setFaction(pr.faction ?? "CIVILIAN");
+        setGovRole(pr.gov_role ?? "NONE");
+        setIsVerified(!!pr.is_verified);
       }
 
+      await reloadVR(uid);
       setLoading(false);
     });
 
@@ -66,13 +100,41 @@ export default function AccountPage() {
     alert("Сохранено");
   };
 
+  const reqDisabled: Record<RoleKind, boolean> = useMemo(
+    () => ({
+      PROSECUTOR:
+        faction !== "GOV" ||
+        vr.PROSECUTOR?.status === "PENDING" ||
+        (govRole === "PROSECUTOR" && isVerified),
+      JUDGE:
+        faction !== "JUDICIAL" ||
+        vr.JUDGE?.status === "PENDING" ||
+        (govRole === "JUDGE" && isVerified),
+    }),
+    [faction, vr, govRole, isVerified]
+  );
+
+  const sendVerification = async (kind: RoleKind) => {
+    if (!userId) return;
+    const { error } = await supabase
+      .from("verification_requests")
+      .insert({ created_by: userId, kind, comment: null });
+    if (error) {
+      alert(error.message);
+      return;
+    }
+    await reloadVR(userId);
+    alert("Заявка отправлена.");
+  };
+
   if (loading) return <p className="px-4 py-6">Загрузка…</p>;
   if (!userId) return null;
 
   return (
-    <div className="mx-auto max-w-lg space-y-4 px-4 py-6">
+    <div className="mx-auto max-w-3xl space-y-6 px-4 py-6">
       <h1 className="text-2xl font-bold">Мой профиль</h1>
 
+      {/* Профиль */}
       <div className="space-y-3 rounded-2xl border bg-white p-5 shadow-sm">
         <label className="block">
           <span className="mb-1 block text-sm">Nick name</span>
@@ -123,6 +185,67 @@ export default function AccountPage() {
           >
             Сохранить
           </button>
+        </div>
+      </div>
+
+      {/* Верификация роли */}
+      <div className="rounded-2xl border bg-white p-5 shadow-sm">
+        <h2 className="mb-2 text-lg font-semibold">Верификация роли</h2>
+        <p className="mb-4 text-sm text-gray-600">
+          Для фракции <b>GOV</b> – верификация <b>прокурора</b>. Для{" "}
+          <b>Судейского корпуса</b> – верификация <b>судьи</b>.
+        </p>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-xl border p-4">
+            <div className="mb-2 font-medium">Прокурор</div>
+            <div className="mb-3 text-sm text-gray-600">
+              Статус:{" "}
+              <b>
+                {govRole === "PROSECUTOR" && isVerified
+                  ? "подтверждён"
+                  : vr.PROSECUTOR?.status
+                  ? vr.PROSECUTOR.status.toLowerCase()
+                  : "нет заявки"}
+              </b>
+            </div>
+            <button
+              onClick={() => sendVerification("PROSECUTOR")}
+              disabled={reqDisabled.PROSECUTOR}
+              className={`rounded-lg px-3 py-2 text-sm ${
+                reqDisabled.PROSECUTOR
+                  ? "cursor-not-allowed border bg-gray-100 text-gray-500"
+                  : "bg-indigo-600 text-white hover:bg-indigo-700"
+              }`}
+            >
+              Запрос верификации прокурора
+            </button>
+          </div>
+
+          <div className="rounded-xl border p-4">
+            <div className="mb-2 font-medium">Судья</div>
+            <div className="mb-3 text-sm text-gray-600">
+              Статус:{" "}
+              <b>
+                {govRole === "JUDGE" && isVerified
+                  ? "подтверждён"
+                  : vr.JUDGE?.status
+                  ? vr.JUDGE.status.toLowerCase()
+                  : "нет заявки"}
+              </b>
+            </div>
+            <button
+              onClick={() => sendVerification("JUDGE")}
+              disabled={reqDisabled.JUDGE}
+              className={`rounded-lg px-3 py-2 text-sm ${
+                reqDisabled.JUDGE
+                  ? "cursor-not-allowed border bg-gray-100 text-gray-500"
+                  : "bg-indigo-600 text-white hover:bg-indigo-700"
+              }`}
+            >
+              Запрос верификации судьи
+            </button>
+          </div>
         </div>
       </div>
     </div>
