@@ -59,6 +59,13 @@ export default function CasesPage() {
   const [userProfile, setUserProfile] = useState<Profile | null>(null);
   const [filter, setFilter] = useState<"all" | "active" | "closed" | "pending">("all");
   const [searchTerm, setSearchTerm] = useState("");
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    title: "",
+    case_number: "",
+    type: "criminal" as "criminal" | "civil" | "administrative",
+    description: ""
+  });
 
   useEffect(() => {
     loadUserProfile();
@@ -159,6 +166,46 @@ export default function CasesPage() {
     return ["PROSECUTOR", "JUDGE", "ATTORNEY_GENERAL", "CHIEF_JUSTICE"].includes(userProfile.gov_role);
   };
 
+  const handleCreateCase = async () => {
+    if (!userProfile) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from("cases")
+        .insert({
+          title: createForm.title,
+          case_number: createForm.case_number,
+          type: createForm.type,
+          status: "pending",
+          start_date: new Date().toISOString(),
+          prosecutor_id: userProfile.gov_role === "PROSECUTOR" ? userProfile.id : undefined
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Ошибка при создании дела:", error);
+        return;
+      }
+
+      // Создаем событие для дела
+      await supabase
+        .from("case_events")
+        .insert({
+          case_id: data.id,
+          event: "Дело создано",
+          description: createForm.description || "Дело было создано в системе"
+        });
+
+      // Закрываем форму и перезагружаем дела
+      setShowCreateForm(false);
+      setCreateForm({ title: "", case_number: "", type: "criminal", description: "" });
+      await loadCases();
+    } catch (error) {
+      console.error("Ошибка при создании дела:", error);
+    }
+  };
+
   const getTypeLabel = (type: string) => {
     switch (type) {
       case "criminal": return "Уголовное";
@@ -207,11 +254,105 @@ export default function CasesPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Дела</h1>
         {canCreateCase() && (
-          <button className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+          <button 
+            onClick={() => setShowCreateForm(true)}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+          >
             Создать дело
           </button>
         )}
       </div>
+
+      {/* Форма создания дела */}
+      {showCreateForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-2xl w-full p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold">Создать новое дело</h2>
+              <button
+                onClick={() => setShowCreateForm(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Название дела
+                </label>
+                <input
+                  type="text"
+                  value={createForm.title}
+                  onChange={(e) => setCreateForm({...createForm, title: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Введите название дела"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Номер дела
+                </label>
+                <input
+                  type="text"
+                  value={createForm.case_number}
+                  onChange={(e) => setCreateForm({...createForm, case_number: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Введите номер дела"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Тип дела
+                </label>
+                <select
+                  value={createForm.type}
+                  onChange={(e) => setCreateForm({...createForm, type: e.target.value as any})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="criminal">Уголовное</option>
+                  <option value="civil">Гражданское</option>
+                  <option value="administrative">Административное</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Описание
+                </label>
+                <textarea
+                  value={createForm.description}
+                  onChange={(e) => setCreateForm({...createForm, description: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  rows={3}
+                  placeholder="Краткое описание дела"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  onClick={handleCreateCase}
+                  disabled={!createForm.title || !createForm.case_number}
+                  className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                >
+                  Создать дело
+                </button>
+                <button
+                  onClick={() => setShowCreateForm(false)}
+                  className="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400"
+                >
+                  Отмена
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Фильтры и поиск */}
       <div className="mb-6 space-y-4">

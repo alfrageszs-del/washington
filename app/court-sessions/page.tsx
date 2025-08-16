@@ -30,10 +30,35 @@ export default function CourtSessionsPage() {
   const [statusFilter, setStatusFilter] = useState<"all" | "scheduled" | "in_progress" | "completed" | "cancelled">("all");
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
+  const [userProfile, setUserProfile] = useState<Profile | null>(null);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    title: "",
+    case_number: "",
+    date: "",
+    time: "",
+    type: "open" as "open" | "closed",
+    description: "",
+    courtroom: "",
+    participants: ""
+  });
 
   useEffect(() => {
+    loadUserProfile();
     loadSessions();
   }, []);
+
+  const loadUserProfile = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .single();
+      setUserProfile(profile);
+    }
+  };
 
   const loadSessions = async () => {
     setLoading(true);
@@ -71,6 +96,61 @@ export default function CourtSessionsPage() {
       console.error("Ошибка при загрузке заседаний:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const canCreateSession = () => {
+    if (!userProfile) return false;
+    return ["JUDGE", "CHIEF_JUSTICE", "TECH_ADMIN"].includes(userProfile.gov_role);
+  };
+
+  const handleCreateSession = async () => {
+    if (!userProfile) return;
+    
+    try {
+      const participantsArray = createForm.participants
+        .split(",")
+        .map(p => p.trim())
+        .filter(p => p.length > 0);
+
+      const { data, error } = await supabase
+        .from("court_sessions")
+        .insert({
+          title: createForm.title,
+          case_number: createForm.case_number || null,
+          judge_id: userProfile.id,
+          judge_name: userProfile.nickname || userProfile.full_name || "Судья",
+          date: createForm.date,
+          time: createForm.time,
+          type: createForm.type,
+          status: "scheduled",
+          participants: participantsArray,
+          description: createForm.description || null,
+          courtroom: createForm.courtroom || null
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Ошибка при создании заседания:", error);
+        return;
+      }
+
+      // Закрываем форму и перезагружаем заседания
+      setShowCreateForm(false);
+      setCreateForm({
+        title: "",
+        case_number: "",
+        date: "",
+        time: "",
+        type: "open",
+        description: "",
+        courtroom: "",
+        participants: ""
+      });
+      await loadSessions();
+    } catch (error) {
+      console.error("Ошибка при создании заседания:", error);
     }
   };
 
@@ -218,6 +298,14 @@ export default function CourtSessionsPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Судебные заседания</h1>
         <div className="flex gap-2">
+          {canCreateSession() && (
+            <button
+              onClick={() => setShowCreateForm(true)}
+              className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+            >
+              Создать заседание
+            </button>
+          )}
           <button
             onClick={() => setView("list")}
             className={`px-4 py-2 rounded-lg text-sm font-medium ${
@@ -240,6 +328,150 @@ export default function CourtSessionsPage() {
           </button>
         </div>
       </div>
+
+      {/* Форма создания заседания */}
+      {showCreateForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-2xl w-full p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold">Создать новое заседание</h2>
+              <button
+                onClick={() => setShowCreateForm(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Название заседания
+                </label>
+                <input
+                  type="text"
+                  value={createForm.title}
+                  onChange={(e) => setCreateForm({...createForm, title: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Введите название заседания"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Номер дела (необязательно)
+                </label>
+                <input
+                  type="text"
+                  value={createForm.case_number}
+                  onChange={(e) => setCreateForm({...createForm, case_number: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Введите номер дела"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Дата
+                  </label>
+                  <input
+                    type="date"
+                    value={createForm.date}
+                    onChange={(e) => setCreateForm({...createForm, date: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Время
+                  </label>
+                  <input
+                    type="time"
+                    value={createForm.time}
+                    onChange={(e) => setCreateForm({...createForm, time: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Тип заседания
+                  </label>
+                  <select
+                    value={createForm.type}
+                    onChange={(e) => setCreateForm({...createForm, type: e.target.value as any})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="open">Открытое</option>
+                    <option value="closed">Закрытое</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Зал суда
+                  </label>
+                  <input
+                    type="text"
+                    value={createForm.courtroom}
+                    onChange={(e) => setCreateForm({...createForm, courtroom: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Номер зала"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Участники (через запятую)
+                </label>
+                <input
+                  type="text"
+                  value={createForm.participants}
+                  onChange={(e) => setCreateForm({...createForm, participants: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Имя 1, Имя 2, Имя 3"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Описание
+                </label>
+                <textarea
+                  value={createForm.description}
+                  onChange={(e) => setCreateForm({...createForm, description: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  rows={3}
+                  placeholder="Краткое описание заседания"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  onClick={handleCreateSession}
+                  disabled={!createForm.title || !createForm.date || !createForm.time}
+                  className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                >
+                  Создать заседание
+                </button>
+                <button
+                  onClick={() => setShowCreateForm(false)}
+                  className="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400"
+                >
+                  Отмена
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Фильтры */}
       <div className="mb-6 space-y-4">

@@ -1,127 +1,149 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabase/client";
+import type { Profile } from "../../../lib/supabase/client";
 
 export default function NewCourtActPage() {
   const router = useRouter();
-  const [canCreate, setCanCreate] = useState(false);
-  const [title, setTitle] = useState("");
-  const [summary, setSummary] = useState("");
-  const [content, setContent] = useState("");
-  const [url, setUrl] = useState("");
-  const [info, setInfo] = useState<string>("");
+  const [loading, setLoading] = useState(false);
+  const [userProfile, setUserProfile] = useState<Profile | null>(null);
+  const [form, setForm] = useState({
+    title: "",
+    content: "",
+    status: "draft"
+  });
 
   useEffect(() => {
-    let alive = true;
-    (async () => {
-      const { data: sess } = await supabase.auth.getSession();
-      const uid = sess.session?.user?.id;
-      if (!uid) return setCanCreate(false);
-      const { data: p } = await supabase
-        .from("profiles")
-        .select("gov_role,is_verified")
-        .eq("id", uid)
-        .maybeSingle();
-      if (alive) setCanCreate(!!p && ((p.gov_role === "JUDGE" && p.is_verified) || p.gov_role === "TECH_ADMIN"));
-    })();
-    return () => {
-      alive = false;
-    };
+    loadUserProfile();
   }, []);
 
-  const onSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setInfo("");
-    if (!canCreate) return setInfo("Нет прав на публикацию судебного акта.");
-    if (title.trim().length < 5) return setInfo("Заголовок минимум 5 символов.");
-    if (content.trim().length < 20) return setInfo("Текст акта слишком короткий.");
-
-    const { data: sess } = await supabase.auth.getSession();
-    const uid = sess.session?.user?.id;
-    if (!uid) return setInfo("Вы не авторизованы.");
-
-    const { data, error } = await supabase
-      .from("court_acts")
-      .insert({
-        author_id: uid,
-        title: title.trim(),
-        summary: summary.trim() || null,
-        content: content.trim(),
-        source_url: url.trim() || null,
-        is_published: true,
-      })
-      .select("id")
-      .single();
-
-    if (error) return setInfo(error.message);
-    router.push(`/acts-court/${data!.id}`);
+  const loadUserProfile = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .single();
+      setUserProfile(profile);
+    }
   };
 
-  if (!canCreate) {
+  const canCreateAct = () => {
+    if (!userProfile) return false;
+    return ["JUDGE", "CHIEF_JUSTICE", "TECH_ADMIN"].includes(userProfile.gov_role);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userProfile || !canCreateAct()) return;
+
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("court_acts")
+        .insert({
+          title: form.title,
+          content: form.content,
+          status: form.status,
+          judge_id: userProfile.id
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Ошибка при создании акта:", error);
+        return;
+      }
+
+      // Перенаправляем на страницу актов
+      router.push("/acts-court");
+    } catch (error) {
+      console.error("Ошибка при создании акта:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!canCreateAct()) {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-6">
-        <h1 className="text-2xl font-bold">Новый судебный акт</h1>
-        <div className="mt-4 rounded-2xl border bg-white p-5 shadow-sm text-sm">
-          У вас нет прав на публикацию судебных актов.
+      <div className="max-w-4xl mx-auto p-6">
+        <div className="text-center py-8">
+          <h1 className="text-2xl font-bold text-red-600 mb-4">Доступ запрещен</h1>
+          <p className="text-gray-600">У вас нет прав для создания судебных актов.</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-6">
-      <h1 className="text-2xl font-bold">Новый судебный акт</h1>
+    <div className="max-w-4xl mx-auto p-6">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold">Создать новый судебный акт</h1>
+        <p className="text-gray-600">Заполните форму для создания нового судебного акта</p>
+      </div>
 
-      <form onSubmit={onSubmit} className="mt-4 space-y-3 rounded-2xl border bg-white p-5 shadow-sm">
-        <label className="block">
-          <span className="mb-1 block text-sm">Заголовок</span>
+      <form onSubmit={handleSubmit} className="bg-white rounded-lg border p-6 space-y-6">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Название акта *
+          </label>
           <input
-            className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Например: Решение суда №123 ..."
+            type="text"
+            required
+            value={form.title}
+            onChange={(e) => setForm({...form, title: e.target.value})}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Введите название судебного акта"
           />
-        </label>
+        </div>
 
-        <label className="block">
-          <span className="mb-1 block text-sm">Краткое описание (опционально)</span>
-          <input
-            className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-            value={summary}
-            onChange={(e) => setSummary(e.target.value)}
-          />
-        </label>
-
-        <label className="block">
-          <span className="mb-1 block text-sm">Текст акта</span>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Содержание акта *
+          </label>
           <textarea
-            className="min-h-[180px] w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            placeholder="Текст акта..."
+            required
+            value={form.content}
+            onChange={(e) => setForm({...form, content: e.target.value})}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            rows={15}
+            placeholder="Введите содержание судебного акта"
           />
-        </label>
+        </div>
 
-        <label className="block">
-          <span className="mb-1 block text-sm">Источник (ссылка, опционально)</span>
-          <input
-            className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://..."
-          />
-        </label>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Статус *
+          </label>
+          <select
+            required
+            value={form.status}
+            onChange={(e) => setForm({...form, status: e.target.value})}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="draft">Черновик</option>
+            <option value="published">Опубликован</option>
+          </select>
+        </div>
 
-        <div className="pt-2 flex items-center gap-3">
+        <div className="flex gap-3 pt-4">
           <button
             type="submit"
-            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+            disabled={loading}
+            className="flex-1 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
           >
-            Опубликовать
+            {loading ? "Создание..." : "Создать акт"}
           </button>
-          {info && <span className="text-sm text-gray-700">{info}</span>}
+          <button
+            type="button"
+            onClick={() => router.push("/acts-court")}
+            className="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400"
+          >
+            Отмена
+          </button>
         </div>
       </form>
     </div>
