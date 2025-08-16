@@ -8,8 +8,11 @@ import type {
   Faction,
   VerificationKind,
   VerificationStatus,
+  RoleChangeRequest,
+  RoleChangeRequestStatus,
 } from "../../lib/supabase/client";
 import { FactionLabel } from "../../lib/supabase/client";
+import RoleChangeRequestForm from "../components/RoleChangeRequestForm";
 
 /* ===== Переводы ===== */
 const roleRu: Record<Profile["gov_role"], string> = {
@@ -88,6 +91,10 @@ export default function AccountPage() {
     id: null,
     created_at: null,
   });
+
+  // запросы на изменение ролей
+  const [roleChangeRequests, setRoleChangeRequests] = useState<RoleChangeRequest[]>([]);
+  const [showRoleChangeForm, setShowRoleChangeForm] = useState(false);
 
   // Эффективно подтверждена роль? (важно для UI)
   const prosecutorEffectiveApproved = useMemo(
@@ -205,6 +212,18 @@ export default function AccountPage() {
               : { status: "NONE", id: null, created_at: null }
           );
         }
+
+        // запросы на изменение ролей
+        const { data: roleRequests } = await supabase
+          .from("role_change_requests")
+          .select("*")
+          .eq("user_id", uid)
+          .order("created_at", { ascending: false })
+          .limit(10);
+
+        if (roleRequests) {
+          setRoleChangeRequests(roleRequests as RoleChangeRequest[]);
+        }
       } catch (e: any) {
         setInfo(e?.message ?? String(e));
       } finally {
@@ -252,6 +271,18 @@ export default function AccountPage() {
           ? { status: jr.status, id: jr.id, created_at: jr.created_at }
           : { status: "NONE", id: null, created_at: null }
       );
+    }
+
+    // обновляем запросы на изменение ролей
+    const { data: roleRequests } = await supabase
+      .from("role_change_requests")
+      .select("*")
+      .eq("user_id", uid)
+      .order("created_at", { ascending: false })
+      .limit(10);
+
+    if (roleRequests) {
+      setRoleChangeRequests(roleRequests as RoleChangeRequest[]);
     }
   };
 
@@ -463,6 +494,77 @@ export default function AccountPage() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Запросы на изменение ролей */}
+      <div className="rounded-2xl border bg-white p-5 shadow-sm">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold">Запросы на изменение ролей</h2>
+          <button
+            onClick={() => setShowRoleChangeForm(!showRoleChangeForm)}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+          >
+            {showRoleChangeForm ? "Отмена" : "Запросить изменение роли"}
+          </button>
+        </div>
+
+        {showRoleChangeForm && userId && (
+          <div className="mb-6">
+            <RoleChangeRequestForm
+              userId={userId}
+              currentProfile={{
+                faction,
+                gov_role: govRole,
+                leader_role: null, // добавить в профиль если нужно
+                office_role: null, // добавить в профиль если нужно
+              }}
+              onSuccess={() => {
+                setShowRoleChangeForm(false);
+                refreshAll(userId);
+                setInfo("Запрос на изменение роли отправлен");
+              }}
+              onCancel={() => setShowRoleChangeForm(false)}
+            />
+          </div>
+        )}
+
+        {/* Список запросов */}
+        {roleChangeRequests.length > 0 ? (
+          <div className="space-y-3">
+            {roleChangeRequests.map((request) => (
+              <div key={request.id} className="rounded-lg border p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="font-medium">
+                    {request.request_type === "FACTION" && "Изменение фракции"}
+                    {request.request_type === "GOV_ROLE" && "Изменение гос. роли"}
+                    {request.request_type === "LEADER_ROLE" && "Изменение лидерской роли"}
+                    {request.request_type === "OFFICE_ROLE" && "Изменение офисной роли"}
+                  </div>
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                    request.status === "PENDING" ? "bg-yellow-100 text-yellow-800" :
+                    request.status === "APPROVED" ? "bg-green-100 text-green-800" :
+                    "bg-red-100 text-red-800"
+                  }`}>
+                    {request.status === "PENDING" ? "Ожидает" :
+                     request.status === "APPROVED" ? "Одобрено" : "Отклонено"}
+                  </span>
+                </div>
+                <div className="text-sm text-gray-600 mb-2">
+                  <div>С {request.current_value || "не указано"} → {request.requested_value}</div>
+                  <div>Причина: {request.reason}</div>
+                  {request.review_comment && (
+                    <div>Комментарий: {request.review_comment}</div>
+                  )}
+                </div>
+                <div className="text-xs text-gray-500">
+                  {request.created_at ? new Date(request.created_at).toLocaleDateString("ru-RU") : ""}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-gray-500 text-sm">Нет активных запросов на изменение ролей</p>
+        )}
       </div>
 
       {/* Быстрые действия */}

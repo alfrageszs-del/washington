@@ -37,6 +37,23 @@ CREATE TABLE IF NOT EXISTS verification_requests (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Таблица запросов на изменение ролей
+CREATE TABLE IF NOT EXISTS role_change_requests (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    requested_by UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    request_type TEXT NOT NULL CHECK (request_type IN ('FACTION', 'GOV_ROLE', 'LEADER_ROLE', 'OFFICE_ROLE')),
+    current_value TEXT,
+    requested_value TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED')),
+    reviewed_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    review_comment TEXT,
+    reviewed_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Таблица заявок на приём
 CREATE TABLE IF NOT EXISTS appointments (
     id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
@@ -123,7 +140,7 @@ CREATE TABLE IF NOT EXISTS warrants (
 CREATE TABLE IF NOT EXISTS notifications (
     id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
     user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-    type TEXT NOT NULL CHECK (type IN ('document', 'court', 'fine', 'wanted', 'system')),
+    type TEXT NOT NULL CHECK (type IN ('document', 'court', 'fine', 'wanted', 'system', 'role_change')),
     title TEXT NOT NULL,
     message TEXT NOT NULL,
     is_read BOOLEAN NOT NULL DEFAULT false,
@@ -284,6 +301,11 @@ CREATE INDEX IF NOT EXISTS idx_profiles_static_id ON profiles(static_id);
 CREATE INDEX IF NOT EXISTS idx_profiles_faction ON profiles(faction);
 CREATE INDEX IF NOT EXISTS idx_profiles_gov_role ON profiles(gov_role);
 
+-- Индексы для запросов на изменение ролей
+CREATE INDEX IF NOT EXISTS idx_role_change_requests_user_id ON role_change_requests(user_id);
+CREATE INDEX IF NOT EXISTS idx_role_change_requests_status ON role_change_requests(status);
+CREATE INDEX IF NOT EXISTS idx_role_change_requests_type ON role_change_requests(request_type);
+
 -- Индексы для документов
 CREATE INDEX IF NOT EXISTS idx_gov_acts_published ON gov_acts(is_published, published_at);
 CREATE INDEX IF NOT EXISTS idx_court_acts_published ON court_acts(is_published, published_at);
@@ -324,6 +346,7 @@ CREATE INDEX IF NOT EXISTS idx_inspections_date ON inspections(date);
 -- Включаем RLS для всех таблиц
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE verification_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE role_change_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE appointments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE gov_acts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE court_acts ENABLE ROW LEVEL SECURITY;
@@ -345,11 +368,36 @@ ALTER TABLE inspection_documents ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users can view their own profile" ON profiles
     FOR SELECT USING (auth.uid() = id);
 
-CREATE POLICY "Users can update their own profile" ON profiles
+CREATE POLICY "Users can update their own profile (except roles)" ON profiles
     FOR UPDATE USING (auth.uid() = id);
 
 CREATE POLICY "Users can insert their own profile" ON profiles
     FOR INSERT WITH CHECK (auth.uid() = id);
+
+-- Политики для запросов на изменение ролей
+CREATE POLICY "Users can view their own role change requests" ON role_change_requests
+    FOR SELECT USING (auth.uid() = user_id OR auth.uid() = requested_by);
+
+CREATE POLICY "Users can create role change requests" ON role_change_requests
+    FOR INSERT WITH CHECK (auth.uid() = requested_by);
+
+CREATE POLICY "Admins can view all role change requests" ON role_change_requests
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM profiles 
+            WHERE profiles.id = auth.uid() 
+            AND profiles.gov_role IN ('TECH_ADMIN', 'ATTORNEY_GENERAL', 'CHIEF_JUSTICE')
+        )
+    );
+
+CREATE POLICY "Admins can update role change requests" ON role_change_requests
+    FOR UPDATE USING (
+        EXISTS (
+            SELECT 1 FROM profiles 
+            WHERE profiles.id = auth.uid() 
+            AND profiles.gov_role IN ('TECH_ADMIN', 'ATTORNEY_GENERAL', 'CHIEF_JUSTICE')
+        )
+    );
 
 -- Политики для уведомлений
 CREATE POLICY "Users can view their own notifications" ON notifications
@@ -398,6 +446,9 @@ CREATE TRIGGER update_profiles_updated_at BEFORE UPDATE ON profiles
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_verification_requests_updated_at BEFORE UPDATE ON verification_requests
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_role_change_requests_updated_at BEFORE UPDATE ON role_change_requests
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_appointments_updated_at BEFORE UPDATE ON appointments
@@ -476,6 +527,40 @@ $$ language 'plpgsql';
 CREATE TRIGGER create_warrant_notification_trigger
     AFTER INSERT ON warrants
     FOR EACH ROW EXECUTE FUNCTION create_warrant_notification();
+
+-- Функция для создания уведомления при изменении статуса запроса на роль
+CREATE OR REPLACE FUNCTION create_role_change_notification()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.status != OLD.status THEN
+        INSERT INTO notifications (user_id, type, title, message, priority, url)
+        VALUES (
+            NEW.user_id,
+            'role_change',
+            CASE 
+                WHEN NEW.status = 'APPROVED' THEN 'Запрос на изменение роли одобрен'
+                WHEN NEW.status = 'REJECTED' THEN 'Запрос на изменение роли отклонен'
+                ELSE 'Обновление запроса на изменение роли'
+            END,
+            CASE 
+                WHEN NEW.status = 'APPROVED' THEN 'Ваш запрос на изменение роли был одобрен администратором.'
+                WHEN NEW.status = 'REJECTED' THEN 'Ваш запрос на изменение роли был отклонен. Причина: ' || COALESCE(NEW.review_comment, 'не указана')
+                ELSE 'Статус вашего запроса на изменение роли обновлен.'
+            END,
+            CASE 
+                WHEN NEW.status IN ('APPROVED', 'REJECTED') THEN 'high'
+                ELSE 'medium'
+            END,
+            '/admin/role-requests'
+        );
+    END IF;
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+CREATE TRIGGER create_role_change_notification_trigger
+    AFTER UPDATE ON role_change_requests
+    FOR EACH ROW EXECUTE FUNCTION create_role_change_notification();
 
 -- Функция для поиска документов по StaticID или nickname
 CREATE OR REPLACE FUNCTION search_documents(search_term TEXT)

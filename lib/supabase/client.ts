@@ -269,3 +269,37 @@ export const WarrantStatusLabel: Record<WarrantStatus, string> = {
   REVOKED: "Отозван",
   EXPIRED: "Истёк",
 };
+
+/** Запросы на изменение ролей */
+export type RoleChangeRequestType = "FACTION" | "GOV_ROLE" | "LEADER_ROLE" | "OFFICE_ROLE";
+
+export type RoleChangeRequestStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+export type RoleChangeRequest = {
+  id: string;
+  user_id: string;                    // пользователь, для которого запрашивается изменение
+  requested_by: string;               // пользователь, который создал запрос
+  request_type: RoleChangeRequestType;
+  current_value: string | null;       // текущее значение роли
+  requested_value: string;            // запрашиваемое значение роли
+  reason: string;                     // причина запроса
+  status: RoleChangeRequestStatus;
+  reviewed_by?: string | null;        // администратор, который рассмотрел запрос
+  review_comment?: string | null;     // комментарий администратора
+  reviewed_at?: string | null;        // время рассмотрения
+  created_at?: string;
+  updated_at?: string;
+};
+
+export const RoleChangeRequestTypeLabel: Record<RoleChangeRequestType, string> = {
+  FACTION: "Фракция",
+  GOV_ROLE: "Государственная роль",
+  LEADER_ROLE: "Лидерская роль",
+  OFFICE_ROLE: "Офисная роль",
+};
+
+export const RoleChangeRequestStatusLabel: Record<RoleChangeRequestStatus, string> = {
+  PENDING: "Ожидает рассмотрения",
+  APPROVED: "Одобрено",
+  REJECTED: "Отклонено",
+};

@@ -52,6 +52,7 @@ const adminMenu: MenuItem[] = [
   { href: "/admin/factions", label: "Фракции", icon: "👥" },
   { href: "/admin/roles", label: "Роли", icon: "🎭" },
   { href: "/admin/appointments", label: "Заявки", icon: "📋" },
+  { href: "/admin/role-requests", label: "Запросы на роли", icon: "🔄" },
 ];
 
 const pill = "inline-flex h-10 items-center rounded-full px-4 text-sm font-medium transition-colors " +
