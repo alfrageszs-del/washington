@@ -23,7 +23,8 @@ export default function CourtActsPage() {
   const [createForm, setCreateForm] = useState({
     title: "",
     content: "",
-    status: "draft"
+    status: "draft",
+    source_url: ""
   });
 
   useEffect(() => {
@@ -82,6 +83,7 @@ export default function CourtActsPage() {
           title: createForm.title,
           content: createForm.content,
           status: createForm.status,
+          source_url: createForm.source_url || null,
           judge_id: me.id
         })
         .select()
@@ -94,7 +96,7 @@ export default function CourtActsPage() {
 
       // Закрываем форму и перезагружаем акты
       setShowCreateForm(false);
-      setCreateForm({ title: "", content: "", status: "draft" });
+      setCreateForm({ title: "", content: "", status: "draft", source_url: "" });
       await loadActs();
       setInfo("Акт суда успешно создан!");
     } catch (error) {
@@ -195,6 +197,20 @@ export default function CourtActsPage() {
                   <option value="draft">Черновик</option>
                   <option value="published">Опубликован</option>
                 </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Ссылка на источник (обязательно)
+                </label>
+                <input
+                  type="url"
+                  required
+                  value={createForm.source_url}
+                  onChange={(e) => setCreateForm({...createForm, source_url: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="https://example.com/document"
+                />
               </div>
 
               <div className="flex gap-3 pt-4">

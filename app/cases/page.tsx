@@ -163,7 +163,7 @@ export default function CasesPage() {
 
   const canCreateCase = () => {
     if (!userProfile) return false;
-    return ["PROSECUTOR", "JUDGE", "ATTORNEY_GENERAL", "CHIEF_JUSTICE"].includes(userProfile.gov_role);
+    return ["PROSECUTOR", "JUDGE", "ATTORNEY_GENERAL", "CHIEF_JUSTICE", "TECH_ADMIN"].includes(userProfile.gov_role);
   };
 
   const handleCreateCase = async () => {
@@ -188,14 +188,18 @@ export default function CasesPage() {
         return;
       }
 
-      // Создаем событие для дела
-      await supabase
-        .from("case_events")
-        .insert({
-          case_id: data.id,
-          event: "Дело создано",
-          description: createForm.description || "Дело было создано в системе"
-        });
+      // Создаем событие для дела (если таблица существует)
+      try {
+        await supabase
+          .from("case_events")
+          .insert({
+            case_id: data.id,
+            event: "Дело создано",
+            description: createForm.description || "Дело было создано в системе"
+          });
+      } catch (error) {
+        console.log("Таблица case_events не существует, пропускаем создание события");
+      }
 
       // Закрываем форму и перезагружаем дела
       setShowCreateForm(false);

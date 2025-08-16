@@ -3,8 +3,6 @@
 import { useState } from "react";
 import { supabase } from "../../lib/supabase/client";
 import type { 
-  RoleChangeRequestType, 
-  RoleChangeRequest, 
   Faction, 
   GovRole, 
   LeaderRole, 
@@ -17,7 +15,7 @@ import type {
 
 // Импортируем типы из отдельного файла
 import type { 
-  RoleChangeRequestType as RCRType,
+  RoleChangeRequestType,
   RoleChangeRequestStatus 
 } from "../../role_change_types";
 
@@ -39,13 +37,13 @@ export default function RoleChangeRequestForm({
   onSuccess, 
   onCancel 
 }: RoleChangeRequestFormProps) {
-  const [requestType, setRequestType] = useState<RCRType>("FACTION");
+  const [requestType, setRequestType] = useState<RoleChangeRequestType>("FACTION");
   const [requestedValue, setRequestedValue] = useState<string>("");
   const [reason, setReason] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string>("");
 
-  const getCurrentValue = (type: RCRType): string | null => {
+  const getCurrentValue = (type: RoleChangeRequestType): string | null => {
     switch (type) {
       case "FACTION":
         return currentProfile.faction;
@@ -60,7 +58,7 @@ export default function RoleChangeRequestForm({
     }
   };
 
-  const getOptions = (type: RCRType): { value: string; label: string }[] => {
+  const getOptions = (type: RoleChangeRequestType): { value: string; label: string }[] => {
     switch (type) {
       case "FACTION":
         return Object.entries(FactionLabel).map(([value, label]) => ({ value, label }));
@@ -98,122 +96,114 @@ export default function RoleChangeRequestForm({
         throw new Error("Пользователь не авторизован");
       }
 
-      const { error } = await supabase
+      const { error: insertError } = await supabase
         .from("role_change_requests")
         .insert({
           user_id: userId,
-          requested_by: user.id,
           request_type: requestType,
           current_value: currentValue,
           requested_value: requestedValue,
           reason: reason.trim(),
+          status: "PENDING"
         });
 
-      if (error) {
-        throw error;
+      if (insertError) {
+        throw new Error(insertError.message);
       }
 
-      onSuccess?.();
+      // Сброс формы
+      setRequestType("FACTION");
+      setRequestedValue("");
+      setReason("");
+      
+      if (onSuccess) {
+        onSuccess();
+      }
     } catch (err) {
-      console.error("Ошибка при создании запроса:", err);
-      setError("Произошла ошибка при отправке запроса");
+      setError(err instanceof Error ? err.message : "Произошла ошибка при отправке запроса");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const currentValue = getCurrentValue(requestType);
-  const options = getOptions(requestType);
-
   return (
-    <div className="bg-white rounded-lg border border-slate-200 p-6">
-      <h3 className="text-lg font-semibold text-slate-900 mb-4">
-        Запрос на изменение роли
-      </h3>
-
+    <div className="bg-white rounded-lg border p-6">
+      <h3 className="text-lg font-semibold mb-4">Запрос на изменение роли</h3>
+      
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Тип запроса */}
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">
-            Тип роли для изменения
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Тип изменения
           </label>
           <select
             value={requestType}
             onChange={(e) => {
-              setRequestType(e.target.value as RCRType);
+              setRequestType(e.target.value as RoleChangeRequestType);
               setRequestedValue("");
             }}
-            className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="FACTION">Фракция</option>
             <option value="GOV_ROLE">Государственная роль</option>
-            <option value="LEADER_ROLE">Лидерская роль</option>
+            <option value="LEADER_ROLE">Роль лидера</option>
             <option value="OFFICE_ROLE">Офисная роль</option>
           </select>
         </div>
 
-        {/* Текущее значение */}
-        {currentValue && (
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Текущее значение
-            </label>
-            <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-md text-slate-600">
-              {options.find(opt => opt.value === currentValue)?.label || currentValue}
-            </div>
-          </div>
-        )}
-
-        {/* Запрашиваемое значение */}
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Текущее значение
+          </label>
+          <input
+            type="text"
+            value={getCurrentValue(requestType) || "Не установлено"}
+            disabled
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-500"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
             Запрашиваемое значение
           </label>
           <select
             value={requestedValue}
             onChange={(e) => setRequestedValue(e.target.value)}
-            className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             required
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">Выберите новое значение</option>
-            {options
-              .filter(option => option.value !== currentValue)
-              .map(option => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
+            {getOptions(requestType).map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
           </select>
         </div>
 
-        {/* Причина */}
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">
-            Причина запроса
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Причина изменения
           </label>
           <textarea
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            rows={3}
-            className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            placeholder="Объясните, почему необходимо изменить роль..."
             required
+            rows={3}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Укажите причину для изменения роли..."
           />
         </div>
 
-        {/* Ошибка */}
         {error && (
-          <div className="text-red-600 text-sm bg-red-50 border border-red-200 rounded-md p-3">
-            {error}
-          </div>
+          <div className="text-red-600 text-sm">{error}</div>
         )}
 
-        {/* Кнопки */}
         <div className="flex gap-3 pt-4">
           <button
             type="submit"
             disabled={isSubmitting}
-            className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
           >
             {isSubmitting ? "Отправка..." : "Отправить запрос"}
           </button>
@@ -221,7 +211,7 @@ export default function RoleChangeRequestForm({
             <button
               type="button"
               onClick={onCancel}
-              className="px-4 py-2 border border-slate-300 text-slate-700 rounded-md hover:bg-slate-50 transition-colors"
+              className="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400"
             >
               Отмена
             </button>

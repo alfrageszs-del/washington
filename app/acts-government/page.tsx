@@ -10,6 +10,7 @@ type GovActRow = {
   title: string;
   content: string;
   created_at: string;
+  status: string;
 };
 
 export default function GovActsPage() {
@@ -18,6 +19,13 @@ export default function GovActsPage() {
   const [canCreate, setCanCreate] = useState(false);
   const [loading, setLoading] = useState(true);
   const [info, setInfo] = useState("");
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    title: "",
+    content: "",
+    status: "draft",
+    source_url: ""
+  });
 
   useEffect(() => {
     let alive = true;
@@ -29,7 +37,7 @@ export default function GovActsPage() {
       // 1) список опубликованных (берём author_id, чтобы знать права)
       const { data: rows, error: selErr } = await supabase
         .from("gov_acts")
-        .select("id,author_id,title,content,created_at")
+        .select("id,author_id,title,content,created_at,status")
         .eq("status", "published")
         .order("created_at", { ascending: false });
 
@@ -69,6 +77,49 @@ export default function GovActsPage() {
   const isTechAdmin = me?.gov_role === "TECH_ADMIN";
   const canEdit = (row: GovActRow) => isTechAdmin || row.author_id === me?.id;
 
+  const handleCreateAct = async () => {
+    if (!me) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from("gov_acts")
+        .insert({
+          title: createForm.title,
+          content: createForm.content,
+          status: createForm.status,
+          source_url: createForm.source_url,
+          author_id: me.id
+        })
+        .select()
+        .single();
+
+      if (error) {
+        setInfo(error.message);
+        return;
+      }
+
+      // Закрываем форму и перезагружаем акты
+      setShowCreateForm(false);
+      setCreateForm({ title: "", content: "", status: "draft", source_url: "" });
+      await loadActs();
+      setInfo("Акт правительства успешно создан!");
+    } catch (error) {
+      console.error("Ошибка при создании акта:", error);
+      setInfo("Ошибка при создании акта");
+    }
+  };
+
+  const loadActs = async () => {
+    const { data: rows, error: selErr } = await supabase
+      .from("gov_acts")
+      .select("id,author_id,title,content,created_at,status")
+      .eq("status", "published")
+      .order("created_at", { ascending: false });
+
+    if (selErr) setInfo(selErr.message);
+    setActs((rows ?? []) as GovActRow[]);
+  };
+
   const onDelete = async (id: string) => {
     if (!confirm("Удалить этот акт правительства? Это действие необратимо.")) return;
     setInfo("");
@@ -84,16 +135,107 @@ export default function GovActsPage() {
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-2xl font-bold">Реестр актов правительства</h1>
         {canCreate && (
-          <a
-            href="/acts-government/new"
+          <button
+            onClick={() => setShowCreateForm(true)}
             className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
           >
             Новый акт
-          </a>
+          </button>
         )}
       </div>
 
       {info && <p className="mb-4 text-sm text-red-600">{info}</p>}
+
+      {/* Форма создания акта */}
+      {showCreateForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-4xl w-full p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold">Создать новый акт правительства</h2>
+              <button
+                onClick={() => setShowCreateForm(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Название акта
+                </label>
+                <input
+                  type="text"
+                  value={createForm.title}
+                  onChange={(e) => setCreateForm({...createForm, title: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Введите название акта правительства"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Содержание акта
+                </label>
+                <textarea
+                  value={createForm.content}
+                  onChange={(e) => setCreateForm({...createForm, content: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  rows={10}
+                  placeholder="Введите содержание акта правительства"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Статус
+                </label>
+                <select
+                  value={createForm.status}
+                  onChange={(e) => setCreateForm({...createForm, status: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="draft">Черновик</option>
+                  <option value="published">Опубликован</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Ссылка на источник (обязательно)
+                </label>
+                <input
+                  type="url"
+                  required
+                  value={createForm.source_url}
+                  onChange={(e) => setCreateForm({...createForm, source_url: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="https://example.com/document"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  onClick={handleCreateAct}
+                  disabled={!createForm.title || !createForm.content || !createForm.source_url}
+                  className="flex-1 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                >
+                  Создать акт
+                </button>
+                <button
+                  onClick={() => setShowCreateForm(false)}
+                  className="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400"
+                >
+                  Отмена
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {acts.length === 0 ? (
         <div className="rounded-2xl border bg-white p-8 text-center text-gray-500">
