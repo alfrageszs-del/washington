@@ -11,7 +11,6 @@ type CourtActRow = {
   content: string;
   created_at: string;
   status: string;
-  source_url?: string;
 };
 
 export default function CourtActsPage() {
@@ -24,8 +23,7 @@ export default function CourtActsPage() {
   const [createForm, setCreateForm] = useState({
     title: "",
     content: "",
-    status: "draft",
-    source_url: ""
+    status: "draft"
   });
 
   useEffect(() => {
@@ -38,7 +36,7 @@ export default function CourtActsPage() {
       try {
         const { data: rows, error: selErr } = await supabase
           .from("court_acts")
-          .select("id,judge_id,title,content,created_at,status,source_url")
+          .select("id,judge_id,title,content,created_at,status")
           .eq("status", "published")
           .order("created_at", { ascending: false });
 
@@ -93,7 +91,6 @@ export default function CourtActsPage() {
           title: createForm.title,
           content: createForm.content,
           status: createForm.status,
-          source_url: createForm.source_url || null,
           judge_id: me.id
         })
         .select()
@@ -106,7 +103,7 @@ export default function CourtActsPage() {
 
       // Закрываем форму и перезагружаем акты
       setShowCreateForm(false);
-      setCreateForm({ title: "", content: "", status: "draft", source_url: "" });
+      setCreateForm({ title: "", content: "", status: "draft" });
       await loadActs();
       setInfo("Акт суда успешно создан!");
     } catch (error) {
@@ -119,7 +116,7 @@ export default function CourtActsPage() {
     try {
       const { data: rows, error: selErr } = await supabase
         .from("court_acts")
-        .select("id,judge_id,title,content,created_at,status,source_url")
+        .select("id,judge_id,title,content,created_at,status")
         .eq("status", "published")
         .order("created_at", { ascending: false });
 
@@ -218,24 +215,12 @@ export default function CourtActsPage() {
                 </select>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Ссылка на источник (обязательно)
-                </label>
-                <input
-                  type="url"
-                  required
-                  value={createForm.source_url}
-                  onChange={(e) => setCreateForm({...createForm, source_url: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="https://example.com/document"
-                />
-              </div>
+              
 
               <div className="flex gap-3 pt-4">
                 <button
                   onClick={handleCreateAct}
-                  disabled={!createForm.title || !createForm.content || !createForm.source_url}
+                                     disabled={!createForm.title || !createForm.content}
                   className="flex-1 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
                 >
                   Создать акт
