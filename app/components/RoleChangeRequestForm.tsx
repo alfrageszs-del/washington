@@ -102,10 +102,11 @@ export default function RoleChangeRequestForm({
       const { error: insertError } = await supabase
         .from("role_change_requests")
         .insert({
-          user_id: userId,
-          request_type: requestType,
-          current_value: currentValue,
-          requested_value: requestedValue,
+          requester_id: userId,
+          current_role_value: currentValue,
+          requested_role_value: requestedValue,
+          current_faction_value: currentProfile.faction,
+          requested_faction_value: requestedValue,
           reason: reason.trim(),
           status: "PENDING"
         });

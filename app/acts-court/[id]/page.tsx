@@ -1,163 +1,143 @@
+// app/acts-court/[id]/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabase/client";
 import type { Profile } from "../../../lib/supabase/client";
-import { FactionLabel } from "../../../lib/supabase/client";
-import { useRouter } from "next/navigation";
 
-type Act = {
+type CourtAct = {
   id: string;
-  author_id: string;
   title: string;
-  summary: string | null;
   content: string;
-  source_url: string | null;
-  published_at: string;
+  judge_id: string;
+  status: "draft" | "published" | "archived";
+  source_url?: string;
+  created_at: string;
+  updated_at: string;
+  judge?: {
+    nickname: string;
+    static_id: string;
+  };
 };
 
-type Author = Pick<Profile, "id" | "nickname" | "faction" | "gov_role">;
-
-const roleRu: Record<Profile["gov_role"], string> = {
-  NONE: "Нет",
-  PROSECUTOR: "Прокурор",
-  JUDGE: "Судья",
-  TECH_ADMIN: "Тех. администратор",
-    ATTORNEY_GENERAL: "Генеральный прокурор", // NEW
-    CHIEF_JUSTICE: "Главный судья", // NEW
-};
-
-export default function CourtActView({ params }: { params: { id: string } }) {
-  const { id } = params;
+export default function CourtActPage() {
+  const params = useParams();
   const router = useRouter();
-
-  const [me, setMe] = useState<Pick<Profile, "id" | "gov_role"> | null>(null);
-  const [act, setAct] = useState<Act | null>(null);
-  const [author, setAuthor] = useState<Author | null>(null);
+  const [act, setAct] = useState<CourtAct | null>(null);
   const [loading, setLoading] = useState(true);
-  const [info, setInfo] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let alive = true;
-    (async () => {
+    const loadAct = async () => {
+      if (!params.id) return;
+      
       setLoading(true);
-      setInfo("");
+      setError(null);
 
-      const { data: A, error: e1 } = await supabase
-        .from("court_acts")
-        .select("id,author_id,title,summary,content,source_url,published_at")
-        .eq("id", id)
-        .maybeSingle();
-      if (e1) setInfo(e1.message);
-      const actRow = (A ?? null) as Act | null;
-      if (alive) setAct(actRow);
+      try {
+        const { data, error } = await supabase
+          .from("court_acts")
+          .select(`
+            *,
+            judge:profiles!judge_id(nickname, static_id)
+          `)
+          .eq("id", params.id)
+          .single();
 
-      if (actRow?.author_id) {
-        const { data: P } = await supabase
-          .from("profiles")
-          .select("id,nickname,faction,gov_role")
-          .eq("id", actRow.author_id)
-          .maybeSingle();
-        if (alive) setAuthor((P ?? null) as Author | null);
-      } else if (alive) {
-        setAuthor(null);
+        if (error) {
+          setError(error.message);
+          return;
+        }
+
+        setAct(data);
+      } catch (err) {
+        setError("Ошибка при загрузке акта");
+      } finally {
+        setLoading(false);
       }
-
-      const { data: sess } = await supabase.auth.getSession();
-      const uid = sess.session?.user?.id;
-      if (uid) {
-        const { data: p } = await supabase
-          .from("profiles")
-          .select("id,gov_role")
-          .eq("id", uid)
-          .maybeSingle();
-        if (alive) setMe(p ? { id: p.id, gov_role: p.gov_role } : null);
-      } else if (alive) {
-        setMe(null);
-      }
-
-      if (alive) setLoading(false);
-    })();
-    return () => {
-      alive = false;
     };
-  }, [id]);
 
-  const isTechAdmin = me?.gov_role === "TECH_ADMIN";
-  const canEdit = useMemo(() => (act && me ? isTechAdmin || act.author_id === me.id : false), [act, me, isTechAdmin]);
+    loadAct();
+  }, [params.id]);
 
-  const onDelete = async () => {
-    if (!act) return;
-    if (!confirm("Удалить этот судебный акт? Это действие необратимо.")) return;
-    setInfo("");
-    const { error } = await supabase.from("court_acts").delete().eq("id", act.id);
-    if (error) return setInfo(error.message);
-    router.push("/acts-court");
-  };
-
-  if (loading) return <p className="px-4 py-6">Загрузка...</p>;
-  if (!act) {
+  if (loading) {
     return (
-      <div className="mx-auto max-w-3xl px-4 py-6">
-        <div className="rounded-2xl border bg-white p-5 shadow-sm">Акт не найден.</div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Загрузка акта...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !act) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-900 mb-4">Ошибка</h1>
+          <p className="text-gray-600 mb-6">{error || "Акт не найден"}</p>
+          <button
+            onClick={() => router.back()}
+            className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700"
+          >
+            Назад
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-6 space-y-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">{act.title}</h1>
-          <div className="mt-1 text-xs text-gray-500">
-            Опубликовано: {new Date(act.published_at).toLocaleString()}
-          </div>
-          {author && (
-            <div className="mt-2 text-sm text-gray-700">
-              Автор: <span className="font-medium">{author.nickname}</span>{" "}
-              <span className="text-gray-500">
-                ({roleRu[author.gov_role]}, {FactionLabel[author.faction]})
-              </span>
-            </div>
-          )}
-        </div>
-
-        {canEdit && (
-          <div className="flex shrink-0 items-center gap-2">
-            <a
-              href={`/acts-court/${act.id}/edit`}
-              className="rounded-md border px-3 py-1.5 text-xs hover:bg-gray-50"
-            >
-              Редактировать
-            </a>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-4xl mx-auto px-4 py-8">
+        {/* Заголовок */}
+        <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
             <button
-              onClick={onDelete}
-              className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
+              onClick={() => router.back()}
+              className="text-indigo-600 hover:text-indigo-800 flex items-center"
             >
-              Удалить
+              ← Назад к списку
             </button>
+            <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+              act.status === "published" ? "bg-green-100 text-green-800" :
+              act.status === "draft" ? "bg-yellow-100 text-yellow-800" :
+              "bg-gray-100 text-gray-800"
+            }`}>
+              {act.status === "published" ? "Опубликован" :
+               act.status === "draft" ? "Черновик" : "Архив"}
+            </span>
           </div>
-        )}
-      </div>
-
-      {info && <p className="text-sm text-red-600">{info}</p>}
-
-      {act.summary && (
-        <p className="rounded-xl border bg-white p-4 text-sm text-gray-700 shadow-sm">{act.summary}</p>
-      )}
-
-      <article className="prose max-w-none rounded-xl border bg-white p-5 shadow-sm">
-        <pre className="whitespace-pre-wrap text-sm leading-relaxed">{act.content}</pre>
-      </article>
-
-      {act.source_url && (
-        <div className="rounded-xl border bg-white p-4 text-sm shadow-sm">
-          Источник:{" "}
-          <a href={act.source_url} className="text-indigo-600 underline" target="_blank">
-            {act.source_url}
-          </a>
+          
+          <h1 className="text-3xl font-bold text-gray-900 mb-4">{act.title}</h1>
+          
+          <div className="flex items-center text-sm text-gray-600 space-x-4">
+            <span>Судья: {act.judge?.nickname || "Неизвестно"} ({act.judge?.static_id || "N/A"})</span>
+            <span>Дата: {new Date(act.created_at).toLocaleDateString('ru-RU')}</span>
+            {act.source_url && (
+              <a 
+                href={act.source_url} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-indigo-600 hover:text-indigo-800 underline"
+              >
+                Источник
+              </a>
+            )}
+          </div>
         </div>
-      )}
+
+        {/* Содержание */}
+        <div className="bg-white rounded-lg shadow-sm border p-6">
+          <div className="prose prose-lg max-w-none">
+            <div className="whitespace-pre-wrap text-gray-800 leading-relaxed">
+              {act.content}
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

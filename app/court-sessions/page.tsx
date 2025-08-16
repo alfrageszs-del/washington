@@ -117,16 +117,13 @@ export default function CourtSessionsPage() {
         .from("court_sessions")
         .insert({
           title: createForm.title,
-          case_number: createForm.case_number || null,
+          case_id: null, // case_id вместо case_number
           judge_id: userProfile.id,
-          judge_name: userProfile.nickname || userProfile.full_name || "Судья",
-          date: createForm.date,
-          time: createForm.time,
-          type: createForm.type,
+          session_date: `${createForm.date}T${createForm.time}:00`, // session_date вместо date+time
           status: "scheduled",
-          participants: participantsArray,
           description: createForm.description || null,
-          courtroom: createForm.courtroom || null
+          location: createForm.courtroom || null, // location вместо courtroom
+          notes: `Тип: ${createForm.type}, Участники: ${participantsArray.join(", ")}` // notes для дополнительной информации
         })
         .select()
         .single();

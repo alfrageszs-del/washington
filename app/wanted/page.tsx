@@ -7,8 +7,8 @@ import type { Profile } from "../../lib/supabase/client";
 
 type Wanted = {
   id: string;
-  suspect_static_id: string;
-  suspect_name: string;
+  target_static_id: string;
+  target_name: string;
   reason: string;
   reward: number | null;
   department: string | null;
@@ -50,9 +50,9 @@ export default function WantedPage() {
 
   const load = async () => {
     setLoading(true);
-    let qy = supabase.from("wanted").select("*").order("created_at", { ascending: false }).limit(300);
+    let qy = supabase.from("warrants").select("*").order("created_at", { ascending: false }).limit(300);
     if (q.trim()) {
-      qy = qy.or(`suspect_static_id.ilike.%${q}%,suspect_name.ilike.%${q}%`);
+      qy = qy.or(`target_static_id.ilike.%${q}%,target_name.ilike.%${q}%`);
     }
     if (status !== "Все статусы") {
       qy = qy.eq("status", status.toLowerCase());
@@ -73,9 +73,9 @@ export default function WantedPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setInfo("Вы не авторизованы"); return; }
 
-    const { error } = await supabase.from("wanted").insert([{
-      suspect_static_id: sid.trim(),
-      suspect_name: name.trim(),
+    const { error } = await supabase.from("warrants").insert([{
+      target_static_id: sid.trim(),
+      target_name: name.trim(),
       reason: desc.trim(),
       reward: reward > 0 ? reward : null,
       department: me?.faction || "Неизвестно",
@@ -91,7 +91,7 @@ export default function WantedPage() {
     setInfo("");
     const patch: Partial<Wanted> = { status: s };
 
-    const { error } = await supabase.from("wanted").update(patch).eq("id", id);
+    const { error } = await supabase.from("warrants").update(patch).eq("id", id);
     if (error) { setInfo(error.message); return; }
     await load();
   };
@@ -189,8 +189,8 @@ export default function WantedPage() {
             <tbody>
               {rows.map((row) => (
                 <tr key={row.id} className="border-b text-sm">
-                  <td className="py-3">{row.suspect_static_id}</td>
-                  <td className="py-3">{row.suspect_name}</td>
+                  <td className="py-3">{row.target_static_id}</td>
+                  <td className="py-3">{row.target_name}</td>
                   <td className="py-3">{row.department || "Неизвестно"}</td>
                   <td className="py-3">Ордер на арест</td>
                   <td className="py-3">{row.reason}</td>

@@ -7,8 +7,8 @@ import type { Profile } from "../../lib/supabase/client";
 
 type Fine = {
   id: string;
-  defendant_static_id: string;
-  defendant_name: string;
+  offender_static_id: string;
+  offender_name: string;
   amount: number;
   reason: string;
   officer_id: string | null;
@@ -29,7 +29,7 @@ export default function FinesPage() {
   const [info, setInfo] = useState("");
 
   // form
-  const [sid, setSid] = useState("");         // defendant static id
+  const [sid, setSid] = useState("");         // offender static id
   const [name, setName] = useState("");
   const [amount, setAmount] = useState<number>(0);
   const [reason, setReason] = useState("");
@@ -54,7 +54,7 @@ export default function FinesPage() {
     setLoading(true);
     let qy = supabase.from("fines").select("*").order("created_at", { ascending: false }).limit(300);
     if (q.trim()) {
-      qy = qy.or(`defendant_static_id.ilike.%${q}%,defendant_name.ilike.%${q}%`);
+      qy = qy.or(`offender_static_id.ilike.%${q}%,offender_name.ilike.%${q}%`);
     }
     const { data, error } = await qy;
     if (error) setInfo(error.message);
@@ -73,8 +73,8 @@ export default function FinesPage() {
     if (!user) { setInfo("Вы не авторизованы"); return; }
 
     const { error } = await supabase.from("fines").insert([{
-      defendant_static_id: sid.trim(),
-      defendant_name: name.trim(),
+      offender_static_id: sid.trim(),
+      offender_name: name.trim(),
       officer_id: user.id,
       officer_name: me?.nickname || "Неизвестно",
       department: me?.faction || "Неизвестно",
@@ -179,8 +179,8 @@ export default function FinesPage() {
             <tbody>
               {rows.map((row) => (
                 <tr key={row.id} className="border-b text-sm">
-                  <td className="py-3">{row.defendant_static_id}</td>
-                  <td className="py-3">{row.defendant_name}</td>
+                  <td className="py-3">{row.offender_static_id}</td>
+                  <td className="py-3">{row.offender_name}</td>
                   <td className="py-3">{row.department || "Неизвестно"}</td>
                   <td className="py-3">${row.amount}</td>
                   <td className="py-3">{row.reason}</td>

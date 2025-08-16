@@ -225,7 +225,13 @@ export default function GovActsPage() {
                   </div>
                   
                   <h3 className="text-lg font-medium text-gray-900 mb-2 line-clamp-2">
-                    {act.title}
+                    <a 
+                      href={`/acts-government/${act.id}`} 
+                      target="_blank"
+                      className="hover:text-indigo-600 transition-colors cursor-pointer"
+                    >
+                      {act.title}
+                    </a>
                   </h3>
                   
                   <p className="text-sm text-gray-600 mb-4 line-clamp-3">
