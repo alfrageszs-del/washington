@@ -9,7 +9,7 @@ const links: { href: string; label: string }[] = [
   { href: "/acts-government",label: "Акты правительства" },
   { href: "/acts-court",     label: "Акты суда" },
   { href: "/fines",          label: "Штрафы" },
-  { href: "/wanted",         label: "Розыск" },
+  { href: "/wanted",         label: "Ордера" },
   { href: "/structures",     label: "Госструктуры" },
   { href: "/appointment",    label: "Запись" },
 ];

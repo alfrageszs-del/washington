@@ -211,3 +211,61 @@ export const AppointmentStatusLabel: Record<AppointmentStatus, string> = {
   CANCELLED: "Отменено",
 };
 export type { Session, AuthChangeEvent } from "@supabase/supabase-js";
+
+
+export type FineStatus = "UNPAID" | "PAID" | "CANCELLED";
+
+export type Fine = {
+  id: string;
+  created_by: string;
+  offender_id?: string | null;
+  offender_static_id: string;
+  offender_name: string;
+  issuer_faction: Faction;        // используем уже существующий Faction
+  amount: number;
+  reason: string;
+  status: FineStatus;
+  issued_at?: string;
+  paid_at?: string | null;
+  updated_at?: string;
+};
+
+export const FineStatusLabel: Record<FineStatus, string> = {
+  UNPAID: "Не оплачен",
+  PAID: "Оплачен",
+  CANCELLED: "Отменён",
+};
+
+export type WarrantType = "ARREST" | "SEARCH" | "SEIZURE" | "DETENTION";
+export type WarrantStatus = "ACTIVE" | "EXECUTED" | "REVOKED" | "EXPIRED";
+
+export type Warrant = {
+  id: string;
+  created_by: string;
+  subject_id?: string | null;
+  subject_static_id: string;
+  subject_name: string;
+  issuer_faction: Faction;
+  warrant_type: WarrantType;
+  description: string;
+  status: WarrantStatus;
+  issued_at?: string;
+  executed_at?: string | null;
+  revoked_at?: string | null;
+  expires_at?: string | null;
+  updated_at?: string;
+};
+
+export const WarrantTypeLabel: Record<WarrantType, string> = {
+  ARREST: "Ордер на арест",
+  SEARCH: "Ордер на обыск",
+  SEIZURE: "Ордер на изъятие",
+  DETENTION: "Ордер на задержание",
+};
+
+export const WarrantStatusLabel: Record<WarrantStatus, string> = {
+  ACTIVE: "Активен",
+  EXECUTED: "Исполнен",
+  REVOKED: "Отозван",
+  EXPIRED: "Истёк",
+};
