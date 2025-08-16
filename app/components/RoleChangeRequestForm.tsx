@@ -6,17 +6,20 @@ import type {
   Faction, 
   GovRole, 
   LeaderRole, 
-  Department,
+  Department
+} from "../../lib/supabase/client";
+
+// Импортируем типы и константы из отдельного файла
+import type { 
+  RoleChangeRequestType,
+  RoleChangeRequestStatus 
+} from "../../role_change_types";
+
+import {
   FactionLabel,
   GovRoleLabel,
   LeaderRoleLabel,
   DepartmentLabel
-} from "../../lib/supabase/client";
-
-// Импортируем типы из отдельного файла
-import type { 
-  RoleChangeRequestType,
-  RoleChangeRequestStatus 
 } from "../../role_change_types";
 
 type RoleChangeRequestFormProps = {

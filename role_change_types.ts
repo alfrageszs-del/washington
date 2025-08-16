@@ -41,6 +41,58 @@ export const RoleChangeRequestStatusLabel: Record<RoleChangeRequestStatus, strin
 };
 
 // =====================================================
+// КОНСТАНТЫ ДЛЯ ЛЕЙБЛОВ РОЛЕЙ И ФРАКЦИЙ
+// =====================================================
+
+/** Лейблы для фракций */
+export const FactionLabel: Record<string, string> = {
+  'CIVILIAN': 'Гражданский',
+  'GOV': 'Правительство',
+  'COURT': 'Судейский корпус',
+  'WN': 'WN',
+  'FIB': 'FIB',
+  'LSPD': 'LSPD',
+  'LSCSD': 'LSCSD',
+  'EMS': 'EMS',
+  'SANG': 'SANG',
+};
+
+/** Лейблы для государственных ролей */
+export const GovRoleLabel: Record<string, string> = {
+  'NONE': 'Нет',
+  'PROSECUTOR': 'Прокурор',
+  'JUDGE': 'Судья',
+  'TECH_ADMIN': 'Тех. администратор',
+  'ATTORNEY_GENERAL': 'Генеральный прокурор',
+  'CHIEF_JUSTICE': 'Председатель Верховного суда',
+};
+
+/** Лейблы для лидерских ролей */
+export const LeaderRoleLabel: Record<string, string> = {
+  'GOVERNOR': 'Губернатор',
+  'DIRECTOR_WN': 'Директор WN',
+  'DIRECTOR_FIB': 'Директор FIB',
+  'CHIEF_LSPD': 'Шеф LSPD',
+  'SHERIFF_LSCSD': 'Шериф LSCSD',
+  'CHIEF_EMS': 'Главный врач EMS',
+  'COLONEL_SANG': 'Полковник SANG',
+};
+
+/** Лейблы для офисных ролей */
+export const DepartmentLabel: Record<string, string> = {
+  'GOVERNOR': 'Губернатор',
+  'VICE_GOVERNOR': 'Вице-губернатор',
+  'MIN_FINANCE': 'Министерство финансов',
+  'MIN_JUSTICE': 'Министерство юстиции',
+  'BAR_ASSOCIATION': 'Коллегия адвокатов',
+  'GOV_STAFF': 'Аппарат правительства',
+  'MIN_DEFENSE': 'Министерство обороны',
+  'MIN_SECURITY': 'Министерство безопасности',
+  'MIN_HEALTH': 'Министерство здравоохранения',
+  'OTHER': 'Другое',
+};
+
+// =====================================================
 // ВСПОМОГАТЕЛЬНЫЕ ТИПЫ (если нужны)
 // =====================================================
 

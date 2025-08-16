@@ -216,7 +216,7 @@ export default function CourtActsPage() {
               <div className="flex gap-3 pt-4">
                 <button
                   onClick={handleCreateAct}
-                  disabled={!createForm.title || !createForm.content}
+                  disabled={!createForm.title || !createForm.content || !createForm.source_url}
                   className="flex-1 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
                 >
                   Создать акт
