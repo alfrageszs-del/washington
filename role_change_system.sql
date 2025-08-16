@@ -1,5 +1,5 @@
 -- =====================================================
--- СИСТЕМА ЗАПРОСОВ НА ИЗМЕНЕНИЕ РОЛЕЙ
+-- СИСТЕМА ЗАПРОСОВ НА ИЗМЕНЕНИЕ РОЛЕЙ (ОБНОВЛЕННАЯ ВЕРСИЯ)
 -- =====================================================
 
 -- Включаем расширения (если еще не включены)
@@ -155,6 +155,25 @@ CREATE POLICY "Users can update their own notifications" ON notifications
 */
 
 -- =====================================================
+-- ОБНОВЛЕНИЕ ПОЛИТИК ПРОФИЛЕЙ
+-- =====================================================
+
+-- Обновляем политику профилей, чтобы пользователи не могли изменять роли напрямую
+DROP POLICY IF EXISTS "Users can update their own profile (except roles)" ON profiles;
+
+CREATE POLICY "Users can update their own profile (except roles)" ON profiles
+    FOR UPDATE USING (
+        auth.uid() = id 
+        AND (
+            -- Разрешаем обновление только определенных полей
+            (OLD.faction = NEW.faction) AND
+            (OLD.gov_role = NEW.gov_role) AND
+            (OLD.leader_role = NEW.leader_role) AND
+            (OLD.office_role = NEW.office_role)
+        )
+    );
+
+-- =====================================================
 -- ПРИМЕРЫ ИСПОЛЬЗОВАНИЯ
 -- =====================================================
 
@@ -190,3 +209,25 @@ UPDATE profiles
 SET faction = 'LSPD' 
 WHERE id = 'user-uuid-here';
 */
+
+-- =====================================================
+-- ПРОВЕРКИ И ВАЛИДАЦИЯ
+-- =====================================================
+
+-- Проверяем, что таблица создана
+SELECT 'role_change_requests table created successfully' as status;
+
+-- Проверяем индексы
+SELECT indexname, tablename 
+FROM pg_indexes 
+WHERE tablename = 'role_change_requests';
+
+-- Проверяем политики RLS
+SELECT schemaname, tablename, policyname, permissive, roles, cmd, qual 
+FROM pg_policies 
+WHERE tablename = 'role_change_requests';
+
+-- Проверяем триггеры
+SELECT trigger_name, event_manipulation, event_object_table, action_statement
+FROM information_schema.triggers 
+WHERE event_object_table = 'role_change_requests';

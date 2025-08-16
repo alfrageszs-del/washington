@@ -297,7 +297,6 @@ export default function AccountPage() {
         id: userId,
         nickname: nickname.trim(),
         static_id: staticId.trim(),
-        faction,
         discord: discord.trim() || null,
       });
       if (error) throw error;
@@ -399,20 +398,15 @@ export default function AccountPage() {
             />
           </label>
 
-          <label className="block">
+          <div className="block">
             <span className="mb-1 block text-sm">Фракция</span>
-            <select
-              className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-              value={faction}
-              onChange={(e) => setFaction(e.target.value as Faction)}
-            >
-              {factions.map((f) => (
-                <option key={f} value={f}>
-                  {FactionLabel[f]}
-                </option>
-              ))}
-            </select>
-          </label>
+            <div className="w-full rounded-lg border px-3 py-2 text-sm bg-gray-50 text-gray-600">
+              {FactionLabel[faction]}
+            </div>
+            <p className="mt-1 text-xs text-gray-500">
+              Для изменения фракции используйте систему запросов ниже
+            </p>
+          </div>
 
           <div className="pt-2">
             <button

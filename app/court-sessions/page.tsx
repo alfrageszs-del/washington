@@ -1,82 +1,84 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import Link from "next/link";
+import { useEffect, useState } from "react";
+import { supabase } from "../../lib/supabase/client";
+import type { Profile } from "../../lib/supabase/client";
 
 interface CourtSession {
   id: string;
   title: string;
-  caseNumber: string;
-  judge: string;
+  case_number?: string;
+  judge_id?: string;
+  judge_name: string;
   date: string;
   time: string;
   type: "open" | "closed";
   status: "scheduled" | "in_progress" | "completed" | "cancelled";
   participants: string[];
-  description: string;
-  courtroom: string;
+  description?: string;
+  courtroom?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export default function CourtSessionsPage() {
   const [sessions, setSessions] = useState<CourtSession[]>([]);
-  const [filter, setFilter] = useState<"all" | "open" | "closed">("all");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [selectedDate, setSelectedDate] = useState<string>("");
+  const [profiles, setProfiles] = useState<Record<string, Profile>>({});
+  const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"list" | "calendar">("list");
+  const [filter, setFilter] = useState<"all" | "open" | "closed">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "scheduled" | "in_progress" | "completed" | "cancelled">("all");
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
 
   useEffect(() => {
-    // Загрузка данных о заседаниях
-    const mockSessions: CourtSession[] = [
-      {
-        id: "1",
-        title: "Дело №123/2024 - Уголовное дело",
-        caseNumber: "123/2024",
-        judge: "Судья Иванов И.И.",
-        date: "2024-01-20",
-        time: "14:00",
-        type: "open",
-        status: "scheduled",
-        participants: ["Истец: Петров П.П.", "Ответчик: Сидоров С.С.", "Прокурор: Козлов К.К."],
-        description: "Рассмотрение уголовного дела по обвинению в краже",
-        courtroom: "Зал №1"
-      },
-      {
-        id: "2",
-        title: "Дело №124/2024 - Гражданское дело",
-        caseNumber: "124/2024",
-        judge: "Судья Петрова П.П.",
-        date: "2024-01-21",
-        time: "10:00",
-        type: "closed",
-        status: "scheduled",
-        participants: ["Истец: Козлов К.К.", "Ответчик: Иванов И.И."],
-        description: "Рассмотрение гражданского иска о возмещении ущерба",
-        courtroom: "Зал №2"
-      },
-      {
-        id: "3",
-        title: "Дело №125/2024 - Административное дело",
-        caseNumber: "125/2024",
-        judge: "Судья Сидоров С.С.",
-        date: "2024-01-19",
-        time: "16:00",
-        type: "open",
-        status: "completed",
-        participants: ["Заявитель: Петров П.П.", "Представитель: Козлов К.К."],
-        description: "Рассмотрение административного дела о нарушении ПДД",
-        courtroom: "Зал №3"
-      }
-    ];
-    setSessions(mockSessions);
+    loadSessions();
   }, []);
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "scheduled": return "bg-blue-100 text-blue-800";
-      case "in_progress": return "bg-yellow-100 text-yellow-800";
-      case "completed": return "bg-green-100 text-green-800";
-      case "cancelled": return "bg-red-100 text-red-800";
-      default: return "bg-gray-100 text-gray-800";
+  const loadSessions = async () => {
+    setLoading(true);
+    try {
+      const { data: sessionsData } = await supabase
+        .from("court_sessions")
+        .select("*")
+        .order("date", { ascending: true })
+        .order("time", { ascending: true });
+
+      if (sessionsData) {
+        setSessions(sessionsData as CourtSession[]);
+        
+        // Загружаем профили судей
+        const judgeIds = sessionsData
+          .map(s => s.judge_id)
+          .filter(Boolean);
+
+        if (judgeIds.length > 0) {
+          const { data: profilesData } = await supabase
+            .from("profiles")
+            .select("*")
+            .in("id", judgeIds);
+
+          if (profilesData) {
+            const profilesMap: Record<string, Profile> = {};
+            profilesData.forEach((profile: Profile) => {
+              profilesMap[profile.id] = profile;
+            });
+            setProfiles(profilesMap);
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Ошибка при загрузке заседаний:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getTypeLabel = (type: string) => {
+    switch (type) {
+      case "open": return "Открытое";
+      case "closed": return "Закрытое";
+      default: return type;
     }
   };
 
@@ -86,231 +88,397 @@ export default function CourtSessionsPage() {
       case "in_progress": return "В процессе";
       case "completed": return "Завершено";
       case "cancelled": return "Отменено";
-      default: return "Неизвестно";
+      default: return status;
     }
   };
 
-  const getTypeColor = (type: string) => {
-    return type === "open" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800";
+  const getStatusClass = (status: string) => {
+    switch (status) {
+      case "scheduled": return "bg-blue-100 text-blue-800";
+      case "in_progress": return "bg-yellow-100 text-yellow-800";
+      case "completed": return "bg-green-100 text-green-800";
+      case "cancelled": return "bg-red-100 text-red-800";
+      default: return "bg-gray-100 text-gray-800";
+    }
   };
 
-  const getTypeLabel = (type: string) => {
-    return type === "open" ? "Открытое" : "Закрытое";
+  const getTypeClass = (type: string) => {
+    switch (type) {
+      case "open": return "bg-green-100 text-green-800";
+      case "closed": return "bg-red-100 text-red-800";
+      default: return "bg-gray-100 text-gray-800";
+    }
   };
 
   const filteredSessions = sessions.filter(session => {
-    if (filter === "open" && session.type !== "open") return false;
-    if (filter === "closed" && session.type !== "closed") return false;
-    if (statusFilter !== "all" && session.status !== statusFilter) return false;
-    if (selectedDate && session.date !== selectedDate) return false;
-    return true;
+    const matchesType = filter === "all" || session.type === filter;
+    const matchesStatus = statusFilter === "all" || session.status === statusFilter;
+    return matchesType && matchesStatus;
   });
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString("ru-RU", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric"
+  // Календарные функции
+  const getDaysInMonth = (date: Date) => {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startingDayOfWeek = firstDay.getDay();
+    
+    return { daysInMonth, startingDayOfWeek };
+  };
+
+  const getSessionsForDate = (date: Date) => {
+    const dateStr = date.toISOString().split('T')[0];
+    return filteredSessions.filter(session => session.date === dateStr);
+  };
+
+  const formatDate = (date: Date) => {
+    return date.toLocaleDateString("ru-RU", { 
+      day: "numeric", 
+      month: "long", 
+      year: "numeric" 
     });
   };
 
-  const today = new Date().toISOString().split('T')[0];
+  const getMonthName = (date: Date) => {
+    return date.toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
+  };
 
-  return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="max-w-6xl mx-auto">
-        <div className="flex items-center justify-between mb-8">
-          <h1 className="text-3xl font-bold">Реестр судебных заседаний</h1>
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => setView("list")}
-              className={`px-4 py-2 rounded-md font-medium transition-colors ${
-                view === "list" 
-                  ? "bg-blue-600 text-white" 
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              }`}
-            >
-              Список
-            </button>
-            <button
-              onClick={() => setView("calendar")}
-              className={`px-4 py-2 rounded-md font-medium transition-colors ${
-                view === "calendar" 
-                  ? "bg-blue-600 text-white" 
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              }`}
-            >
-              Календарь
-            </button>
+  const navigateMonth = (direction: "prev" | "next") => {
+    const newMonth = new Date(currentMonth);
+    if (direction === "prev") {
+      newMonth.setMonth(newMonth.getMonth() - 1);
+    } else {
+      newMonth.setMonth(newMonth.getMonth() + 1);
+    }
+    setCurrentMonth(newMonth);
+  };
+
+  const renderCalendar = () => {
+    const { daysInMonth, startingDayOfWeek } = getDaysInMonth(currentMonth);
+    const days = [];
+
+    // Добавляем пустые ячейки для начала месяца
+    for (let i = 0; i < startingDayOfWeek; i++) {
+      days.push(<div key={`empty-${i}`} className="p-2 border border-gray-200 bg-gray-50"></div>);
+    }
+
+    // Добавляем дни месяца
+    for (let day = 1; day <= daysInMonth; day++) {
+      const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
+      const sessionsForDay = getSessionsForDate(date);
+      const isToday = date.toDateString() === new Date().toDateString();
+      const isSelected = date.toDateString() === selectedDate.toDateString();
+
+      days.push(
+        <div
+          key={day}
+          className={`p-2 border border-gray-200 min-h-[100px] cursor-pointer transition-colors ${
+            isToday ? "bg-blue-50" : ""
+          } ${isSelected ? "ring-2 ring-blue-500" : ""}`}
+          onClick={() => setSelectedDate(date)}
+        >
+          <div className={`text-sm font-medium ${isToday ? "text-blue-600" : ""}`}>
+            {day}
           </div>
-        </div>
-
-        {/* Фильтры */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Тип заседания
-              </label>
-              <select
-                value={filter}
-                onChange={(e) => setFilter(e.target.value as any)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          <div className="mt-1 space-y-1">
+            {sessionsForDay.slice(0, 2).map((session) => (
+              <div
+                key={session.id}
+                className={`text-xs p-1 rounded truncate ${getStatusClass(session.status)}`}
+                title={session.title}
               >
-                <option value="all">Все заседания</option>
-                <option value="open">Открытые</option>
-                <option value="closed">Закрытые</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Статус
-              </label>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="all">Все статусы</option>
-                <option value="scheduled">Запланировано</option>
-                <option value="in_progress">В процессе</option>
-                <option value="completed">Завершено</option>
-                <option value="cancelled">Отменено</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Дата
-              </label>
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-
-            <div className="flex items-end">
-              <button
-                onClick={() => {
-                  setFilter("all");
-                  setStatusFilter("all");
-                  setSelectedDate("");
-                }}
-                className="w-full px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
-              >
-                Сбросить фильтры
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Список заседаний */}
-        {view === "list" && (
-          <div className="bg-white rounded-lg shadow-md">
-            {filteredSessions.length > 0 ? (
-              <div className="divide-y">
-                {filteredSessions.map((session) => (
-                  <div key={session.id} className="p-6 hover:bg-gray-50 transition-colors">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-3">
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getTypeColor(session.type)}`}>
-                            {getTypeLabel(session.type)}
-                          </span>
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(session.status)}`}>
-                            {getStatusLabel(session.status)}
-                          </span>
-                          <span className="text-sm text-gray-500">
-                            {formatDate(session.date)} в {session.time}
-                          </span>
-                          <span className="text-sm text-gray-500">
-                            {session.courtroom}
-                          </span>
-                        </div>
-                        
-                        <h3 className="text-xl font-semibold mb-2">{session.title}</h3>
-                        <p className="text-gray-600 mb-3">{session.description}</p>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                          <div>
-                            <span className="font-medium text-gray-700">Судья:</span> {session.judge}
-                          </div>
-                          <div>
-                            <span className="font-medium text-gray-700">Номер дела:</span> {session.caseNumber}
-                          </div>
-                        </div>
-
-                        {session.participants.length > 0 && (
-                          <div className="mt-3">
-                            <span className="font-medium text-gray-700 text-sm">Участники:</span>
-                            <div className="flex flex-wrap gap-2 mt-1">
-                              {session.participants.map((participant, index) => (
-                                <span key={index} className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">
-                                  {participant}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex flex-col gap-2 ml-6">
-                        {session.type === "open" && (
-                          <Link
-                            href={`/court-sessions/${session.id}`}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm"
-                          >
-                            Подробнее
-                          </Link>
-                        )}
-                        {session.status === "scheduled" && (
-                          <button className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors text-sm">
-                            Присутствовать
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                {session.title}
               </div>
-            ) : (
-              <div className="text-center py-12">
-                <p className="text-gray-500 text-lg">Заседаний не найдено</p>
-                <p className="text-gray-400">Попробуйте изменить фильтры</p>
+            ))}
+            {sessionsForDay.length > 2 && (
+              <div className="text-xs text-gray-500">
+                +{sessionsForDay.length - 2} еще
               </div>
             )}
           </div>
-        )}
+        </div>
+      );
+    }
 
-        {/* Календарный вид */}
-        {view === "calendar" && (
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <div className="text-center">
-              <h3 className="text-lg font-semibold mb-4">Календарный вид</h3>
-              <p className="text-gray-500">Здесь будет календарь с заседаниями</p>
-              <p className="text-gray-400 text-sm">Функция в разработке</p>
+    return days;
+  };
+
+  if (loading) {
+    return (
+      <div className="max-w-6xl mx-auto p-6">
+        <div className="text-center py-8">Загрузка...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-6xl mx-auto p-6">
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">Судебные заседания</h1>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setView("list")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium ${
+              view === "list" 
+                ? "bg-blue-600 text-white" 
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            }`}
+          >
+            Список
+          </button>
+          <button
+            onClick={() => setView("calendar")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium ${
+              view === "calendar" 
+                ? "bg-blue-600 text-white" 
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            }`}
+          >
+            Календарь
+          </button>
+        </div>
+      </div>
+
+      {/* Фильтры */}
+      <div className="mb-6 space-y-4">
+        <div className="flex gap-2">
+          <button
+            onClick={() => setFilter("all")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium ${
+              filter === "all" 
+                ? "bg-blue-600 text-white" 
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            }`}
+          >
+            Все типы
+          </button>
+          <button
+            onClick={() => setFilter("open")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium ${
+              filter === "open" 
+                ? "bg-blue-600 text-white" 
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            }`}
+          >
+            Открытые
+          </button>
+          <button
+            onClick={() => setFilter("closed")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium ${
+              filter === "closed" 
+                ? "bg-blue-600 text-white" 
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            }`}
+          >
+            Закрытые
+          </button>
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            onClick={() => setStatusFilter("all")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium ${
+              statusFilter === "all" 
+                ? "bg-blue-600 text-white" 
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            }`}
+          >
+            Все статусы
+          </button>
+          <button
+            onClick={() => setStatusFilter("scheduled")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium ${
+              statusFilter === "scheduled" 
+                ? "bg-blue-600 text-white" 
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            }`}
+          >
+            Запланированные
+          </button>
+          <button
+            onClick={() => setStatusFilter("in_progress")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium ${
+              statusFilter === "in_progress" 
+                ? "bg-blue-600 text-white" 
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            }`}
+          >
+            В процессе
+          </button>
+          <button
+            onClick={() => setStatusFilter("completed")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium ${
+              statusFilter === "completed" 
+                ? "bg-blue-600 text-white" 
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            }`}
+          >
+            Завершенные
+          </button>
+        </div>
+      </div>
+
+      {/* Список заседаний */}
+      {view === "list" && (
+        <div className="grid gap-4">
+          {filteredSessions.length > 0 ? (
+            filteredSessions.map((session) => (
+              <div key={session.id} className="bg-white rounded-lg border p-6">
+                <div className="flex items-start justify-between mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold">{session.title}</h3>
+                    {session.case_number && (
+                      <p className="text-sm text-gray-600">Дело №{session.case_number}</p>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${getTypeClass(session.type)}`}>
+                      {getTypeLabel(session.type)}
+                    </span>
+                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusClass(session.status)}`}>
+                      {getStatusLabel(session.status)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid md:grid-cols-3 gap-4 text-sm mb-4">
+                  <div>
+                    <span className="text-gray-500">Дата:</span>{" "}
+                    <span className="font-medium">
+                      {new Date(session.date).toLocaleDateString("ru-RU")}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Время:</span>{" "}
+                    <span className="font-medium">{session.time}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Судья:</span>{" "}
+                    <span className="font-medium">{session.judge_name}</span>
+                  </div>
+                </div>
+
+                {session.courtroom && (
+                  <div className="text-sm mb-4">
+                    <span className="text-gray-500">Зал суда:</span>{" "}
+                    <span className="font-medium">{session.courtroom}</span>
+                  </div>
+                )}
+
+                {session.description && (
+                  <div className="text-sm text-gray-600 mb-4">
+                    {session.description}
+                  </div>
+                )}
+
+                {session.participants.length > 0 && (
+                  <div>
+                    <span className="text-sm text-gray-500">Участники:</span>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {session.participants.map((participant, index) => (
+                        <span
+                          key={index}
+                          className="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs"
+                        >
+                          {participant}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              Заседания не найдены
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Календарный вид */}
+      {view === "calendar" && (
+        <div>
+          {/* Навигация по месяцам */}
+          <div className="flex items-center justify-between mb-6">
+            <button
+              onClick={() => navigateMonth("prev")}
+              className="p-2 rounded-lg hover:bg-gray-100"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <h2 className="text-xl font-semibold">{getMonthName(currentMonth)}</h2>
+            <button
+              onClick={() => navigateMonth("next")}
+              className="p-2 rounded-lg hover:bg-gray-100"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Календарная сетка */}
+          <div className="bg-white rounded-lg border overflow-hidden">
+            {/* Заголовки дней недели */}
+            <div className="grid grid-cols-7 bg-gray-50">
+              {["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].map((day) => (
+                <div key={day} className="p-3 text-center text-sm font-medium text-gray-700">
+                  {day}
+                </div>
+              ))}
+            </div>
+
+            {/* Дни месяца */}
+            <div className="grid grid-cols-7">
+              {renderCalendar()}
             </div>
           </div>
-        )}
 
-        {/* Информация об открытых заседаниях */}
-        {filteredSessions.some(s => s.type === "open") && (
-          <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <h3 className="text-lg font-semibold text-blue-800 mb-2">
-              Открытые заседания
-            </h3>
-            <p className="text-blue-700 text-sm">
-              Открытые заседания доступны для посещения всеми желающими. 
-              Вы можете присутствовать на них в качестве наблюдателя.
-            </p>
-          </div>
-        )}
-      </div>
+          {/* Детали выбранного дня */}
+          {selectedDate && (
+            <div className="mt-6 bg-white rounded-lg border p-6">
+              <h3 className="text-lg font-semibold mb-4">
+                Заседания на {formatDate(selectedDate)}
+              </h3>
+              
+              {getSessionsForDate(selectedDate).length > 0 ? (
+                <div className="space-y-4">
+                  {getSessionsForDate(selectedDate).map((session) => (
+                    <div key={session.id} className="border-l-4 border-blue-500 pl-4">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <h4 className="font-medium">{session.title}</h4>
+                          <p className="text-sm text-gray-600">
+                            {session.time} • {session.judge_name}
+                          </p>
+                          {session.courtroom && (
+                            <p className="text-sm text-gray-600">Зал: {session.courtroom}</p>
+                          )}
+                        </div>
+                        <div className="flex gap-2">
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getTypeClass(session.type)}`}>
+                            {getTypeLabel(session.type)}
+                          </span>
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusClass(session.status)}`}>
+                            {getStatusLabel(session.status)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-gray-500">На этот день заседаний не запланировано</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

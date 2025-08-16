@@ -42,7 +42,6 @@ const legalSystemMenu: MenuItem[] = [
 ];
 
 const servicesMenu: MenuItem[] = [
-  { href: "/structures", label: "Госструктуры", icon: "🏢" },
   { href: "/appointment", label: "Запись на приём", icon: "📅" },
 ];
 
