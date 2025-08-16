@@ -36,8 +36,21 @@ export default function SignUpClient() {
 
     const email = technicalEmail(staticId);
 
-    // Создаём пользователя
-    const { data: sign, error: signErr } = await supabase.auth.signUp({ email, password });
+    // Создаём пользователя с метаданными
+    const { data: sign, error: signErr } = await supabase.auth.signUp({ 
+      email, 
+      password,
+      options: {
+        data: {
+          nickname: nickname.trim() || staticId.trim(),
+          static_id: staticId.trim(),
+          localmail: staticId.trim(),
+          discord: discord.trim() || null,
+          faction: faction
+        }
+      }
+    });
+    
     if (signErr) {
       setInfo(signErr.message);
       return;
@@ -48,14 +61,15 @@ export default function SignUpClient() {
       return;
     }
 
-    // Профиль
-    await supabase.from("profiles").upsert({
-      id: user.id,
-      nickname: nickname.trim() || staticId.trim(),
-      static_id: staticId.trim(),
-      discord: discord.trim() || null,
-      faction,
-    });
+    // Профиль создается автоматически через триггер handle_new_user()
+    // Дополнительные поля (discord, faction) обновляем отдельно
+    if (discord.trim() || faction !== "CIVILIAN") {
+      await supabase.from("profiles").upsert({
+        id: user.id,
+        discord: discord.trim() || null,
+        faction,
+      });
+    }
 
     router.replace(next);
   };
