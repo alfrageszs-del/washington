@@ -62,14 +62,9 @@ export default function SignUpClient() {
     }
 
     // Профиль создается автоматически через триггер handle_new_user()
-    // Дополнительные поля (discord, faction) обновляем отдельно
-    if (discord.trim() || faction !== "CIVILIAN") {
-      await supabase.from("profiles").upsert({
-        id: user.id,
-        discord: discord.trim() || null,
-        faction,
-      });
-    }
+    // Дополнительные поля уже переданы в user_metadata, триггер их обработает
+    // Небольшая задержка для завершения триггера
+    await new Promise(resolve => setTimeout(resolve, 1000));
 
     router.replace(next);
   };
