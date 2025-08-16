@@ -2,14 +2,15 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { supabase } from "../../lib/supabase/client";
 
 interface Notification {
   id: string;
-  type: "document" | "court" | "fine" | "wanted" | "system";
+  type: "document" | "court" | "fine" | "wanted" | "system" | "role_change";
   title: string;
   message: string;
-  date: string;
-  isRead: boolean;
+  created_at: string;
+  is_read: boolean;
   url?: string;
   priority: "low" | "medium" | "high";
 }
@@ -18,6 +19,8 @@ export default function NotificationsPage() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [filter, setFilter] = useState<"all" | "unread" | "read">("all");
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [info, setInfo] = useState("");
 
   const notificationTypes = [
     { id: "document", label: "Документы", color: "bg-blue-100 text-blue-800" },
@@ -25,76 +28,105 @@ export default function NotificationsPage() {
     { id: "fine", label: "Штрафы", color: "bg-yellow-100 text-yellow-800" },
     { id: "wanted", label: "Ордера", color: "bg-red-100 text-red-800" },
     { id: "system", label: "Система", color: "bg-gray-100 text-gray-800" },
+    { id: "role_change", label: "Изменение роли", color: "bg-green-100 text-green-800" },
   ];
 
   useEffect(() => {
-    // Загрузка уведомлений из API
-    const mockNotifications: Notification[] = [
-      {
-        id: "1",
-        type: "document",
-        title: "Новый акт суда",
-        message: "В отношении вас вынесено постановление о возбуждении уголовного дела",
-        date: "2024-01-15T10:30:00",
-        isRead: false,
-        url: "/acts-court/1",
-        priority: "high"
-      },
-      {
-        id: "2",
-        type: "court",
-        title: "Судебное заседание",
-        message: "Вас вызывают на судебное заседание 20 января 2024 года в 14:00",
-        date: "2024-01-14T15:45:00",
-        isRead: false,
-        url: "/court-sessions/1",
-        priority: "high"
-      },
-      {
-        id: "3",
-        type: "fine",
-        title: "Новый штраф",
-        message: "Вам выписан штраф за нарушение ПДД на сумму 5000$",
-        date: "2024-01-13T09:15:00",
-        isRead: true,
-        url: "/fines/3",
-        priority: "medium"
-      },
-      {
-        id: "4",
-        type: "wanted",
-        title: "Ордер на арест",
-        message: "В отношении вас выдан ордер на арест",
-        date: "2024-01-12T16:20:00",
-        isRead: true,
-        url: "/wanted/4",
-        priority: "high"
-      }
-    ];
-    setNotifications(mockNotifications);
+    loadNotifications();
   }, []);
 
-  const markAsRead = (id: string) => {
-    setNotifications(prev => 
-      prev.map(notif => 
-        notif.id === id ? { ...notif, isRead: true } : notif
-      )
-    );
+  const loadNotifications = async () => {
+    setLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setNotifications([]);
+        setLoading(false);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("notifications")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        setInfo(error.message);
+      } else {
+        setNotifications(data || []);
+      }
+    } catch (error) {
+      setInfo("Ошибка при загрузке уведомлений");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const markAllAsRead = () => {
-    setNotifications(prev => 
-      prev.map(notif => ({ ...notif, isRead: true }))
-    );
+  const markAsRead = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from("notifications")
+        .update({ is_read: true })
+        .eq("id", id);
+
+      if (error) {
+        setInfo(error.message);
+      } else {
+        setNotifications(prev => 
+          prev.map(notif => 
+            notif.id === id ? { ...notif, is_read: true } : notif
+          )
+        );
+      }
+    } catch (error) {
+      setInfo("Ошибка при обновлении уведомления");
+    }
   };
 
-  const deleteNotification = (id: string) => {
-    setNotifications(prev => prev.filter(notif => notif.id !== id));
+  const markAllAsRead = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { error } = await supabase
+        .from("notifications")
+        .update({ is_read: true })
+        .eq("user_id", user.id)
+        .eq("is_read", false);
+
+      if (error) {
+        setInfo(error.message);
+      } else {
+        setNotifications(prev => 
+          prev.map(notif => ({ ...notif, is_read: true }))
+        );
+      }
+    } catch (error) {
+      setInfo("Ошибка при обновлении уведомлений");
+    }
+  };
+
+  const deleteNotification = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from("notifications")
+        .delete()
+        .eq("id", id);
+
+      if (error) {
+        setInfo(error.message);
+      } else {
+        setNotifications(prev => prev.filter(notif => notif.id !== id));
+      }
+    } catch (error) {
+      setInfo("Ошибка при удалении уведомления");
+    }
   };
 
   const filteredNotifications = notifications.filter(notif => {
-    if (filter === "unread" && notif.isRead) return false;
-    if (filter === "read" && !notif.isRead) return false;
+    if (filter === "unread" && notif.is_read) return false;
+    if (filter === "read" && !notif.is_read) return false;
     if (selectedTypes.length > 0 && !selectedTypes.includes(notif.type)) return false;
     return true;
   });
@@ -129,7 +161,17 @@ export default function NotificationsPage() {
     return date.toLocaleDateString("ru-RU");
   };
 
-  const unreadCount = notifications.filter(n => !n.isRead).length;
+  const unreadCount = notifications.filter(n => !n.is_read).length;
+
+  if (loading) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="max-w-4xl mx-auto">
+          <p className="text-center text-gray-500">Загрузка уведомлений...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -150,6 +192,12 @@ export default function NotificationsPage() {
             </button>
           </div>
         </div>
+
+        {info && (
+          <div className="mb-4 p-4 bg-red-100 text-red-700 rounded-md">
+            {info}
+          </div>
+        )}
 
         {/* Фильтры */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
@@ -216,7 +264,7 @@ export default function NotificationsPage() {
                 <div
                   key={notification.id}
                   className={`p-6 border-l-4 ${getPriorityColor(notification.priority)} ${
-                    !notification.isRead ? "bg-blue-50" : ""
+                    !notification.is_read ? "bg-blue-50" : ""
                   }`}
                 >
                   <div className="flex items-start justify-between">
@@ -226,9 +274,9 @@ export default function NotificationsPage() {
                           {getTypeLabel(notification.type)}
                         </span>
                         <span className="text-sm text-gray-500">
-                          {formatDate(notification.date)}
+                          {formatDate(notification.created_at)}
                         </span>
-                        {!notification.isRead && (
+                        {!notification.is_read && (
                           <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
                         )}
                       </div>
@@ -244,7 +292,7 @@ export default function NotificationsPage() {
                             Просмотреть
                           </Link>
                         )}
-                        {!notification.isRead && (
+                        {!notification.is_read && (
                           <button
                             onClick={() => markAsRead(notification.id)}
                             className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors text-sm"

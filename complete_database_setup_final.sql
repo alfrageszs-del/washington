@@ -424,6 +424,22 @@ CREATE TABLE IF NOT EXISTS inspections (
 );
 
 -- =====================================================
+-- ТАБЛИЦА ЗАЯВОК НА ПРИЕМ
+-- =====================================================
+
+CREATE TABLE IF NOT EXISTS appointments (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    created_by UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    department TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    details TEXT,
+    preferred_datetime TIMESTAMP WITH TIME ZONE,
+    status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED', 'DONE', 'CANCELLED')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- =====================================================
 -- ИНДЕКСЫ ДЛЯ ПРОИЗВОДИТЕЛЬНОСТИ
 -- =====================================================
 
@@ -495,6 +511,12 @@ CREATE INDEX IF NOT EXISTS idx_inspections_department ON inspections(department)
 CREATE INDEX IF NOT EXISTS idx_inspections_status ON inspections(status);
 CREATE INDEX IF NOT EXISTS idx_inspections_case_id ON inspections(case_id);
 
+-- Индексы для заявок на прием
+CREATE INDEX IF NOT EXISTS idx_appointments_created_by ON appointments(created_by);
+CREATE INDEX IF NOT EXISTS idx_appointments_department ON appointments(department);
+CREATE INDEX IF NOT EXISTS idx_appointments_status ON appointments(status);
+CREATE INDEX IF NOT EXISTS idx_appointments_created_at ON appointments(created_at);
+
 -- =====================================================
 -- ROW LEVEL SECURITY (RLS)
 -- =====================================================
@@ -513,6 +535,7 @@ ALTER TABLE lawyer_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE lawyer_contracts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE court_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE inspections ENABLE ROW LEVEL SECURITY;
+ALTER TABLE appointments ENABLE ROW LEVEL SECURITY;
 
 -- Политики для профилей
 CREATE POLICY "Users can view their own profile" ON profiles
@@ -689,6 +712,16 @@ CREATE POLICY "Inspectors can manage inspections" ON inspections
         )
     );
 
+-- Политики для заявок на прием
+CREATE POLICY "Users can view their own appointments" ON appointments
+    FOR SELECT USING (auth.uid() = created_by);
+
+CREATE POLICY "Users can create appointments" ON appointments
+    FOR INSERT WITH CHECK (auth.uid() = created_by);
+
+CREATE POLICY "Users can update their own appointments" ON appointments
+    FOR UPDATE USING (auth.uid() = created_by);
+
 -- =====================================================
 -- ФУНКЦИИ И ТРИГГЕРЫ
 -- =====================================================
@@ -784,6 +817,10 @@ CREATE TRIGGER update_court_sessions_updated_at
 
 CREATE TRIGGER update_inspections_updated_at 
     BEFORE UPDATE ON inspections
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_appointments_updated_at 
+    BEFORE UPDATE ON appointments
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Функция для создания уведомления при изменении статуса запроса на роль

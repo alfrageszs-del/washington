@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase/client";
 import type { Profile } from "../../lib/supabase/client";
 
@@ -49,98 +49,128 @@ interface LawyerContract {
 }
 
 export default function LawyersPage() {
-  const [activeTab, setActiveTab] = useState<"lawyers" | "requests" | "contracts">("lawyers");
+  const [userProfile, setUserProfile] = useState<Profile | null>(null);
   const [lawyers, setLawyers] = useState<Lawyer[]>([]);
   const [requests, setRequests] = useState<LawyerRequest[]>([]);
   const [contracts, setContracts] = useState<LawyerContract[]>([]);
-  const [profiles, setProfiles] = useState<Record<string, Profile>>({});
-  const [userProfile, setUserProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showRequestModal, setShowRequestModal] = useState(false);
-  const [filter, setFilter] = useState<"all" | "government" | "private">("all");
-  const [statusFilter, setStatusFilter] = useState<"all" | "available" | "busy" | "unavailable">("all");
+  const [info, setInfo] = useState("");
+  const [activeTab, setActiveTab] = useState<"lawyers" | "requests" | "contracts">("lawyers");
 
-  // Форма запроса
+  // Форма добавления адвоката
+  const [showAddLawyerModal, setShowAddLawyerModal] = useState(false);
+  const [addLawyerForm, setAddLawyerForm] = useState({
+    name: "",
+    type: "government" as "government" | "private",
+    specialization: "",
+    experience: 0,
+    contact: "",
+    price: ""
+  });
+
+  // Форма запроса на адвоката
+  const [showRequestModal, setShowRequestModal] = useState(false);
   const [requestForm, setRequestForm] = useState({
     caseType: "",
-    description: "",
+    description: ""
   });
 
   useEffect(() => {
-    loadUserProfile();
     loadData();
   }, []);
 
-  const loadUserProfile = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+
+      // Загружаем профиль пользователя
       const { data: profile } = await supabase
         .from("profiles")
         .select("*")
         .eq("id", user.id)
         .single();
       setUserProfile(profile);
-    }
-  };
 
-  const loadData = async () => {
-    setLoading(true);
-    try {
       // Загружаем адвокатов
       const { data: lawyersData } = await supabase
         .from("lawyers")
         .select("*")
         .order("created_at", { ascending: false });
+      setLawyers(lawyersData || []);
 
-      if (lawyersData) {
-        setLawyers(lawyersData as Lawyer[]);
-      }
-
-      // Загружаем запросы
+      // Загружаем запросы на адвоката
       const { data: requestsData } = await supabase
         .from("lawyer_requests")
         .select("*")
         .order("created_at", { ascending: false });
+      setRequests(requestsData || []);
 
-      if (requestsData) {
-        setRequests(requestsData as LawyerRequest[]);
-      }
-
-      // Загружаем контракты
+      // Загружаем договоры
       const { data: contractsData } = await supabase
         .from("lawyer_contracts")
         .select("*")
         .order("created_at", { ascending: false });
+      setContracts(contractsData || []);
 
-      if (contractsData) {
-        setContracts(contractsData as LawyerContract[]);
-      }
-
-      // Загружаем профили
-      const userIds = [...new Set([
-        ...lawyersData?.map(l => l.user_id) || [],
-        ...requestsData?.map(r => r.client_id) || [],
-        ...contractsData?.map(c => c.client_id) || []
-      ])];
-
-      if (userIds.length > 0) {
-        const { data: profilesData } = await supabase
-          .from("profiles")
-          .select("*")
-          .in("id", userIds);
-
-        if (profilesData) {
-          const profilesMap: Record<string, Profile> = {};
-          profilesData.forEach((profile: Profile) => {
-            profilesMap[profile.id] = profile;
-          });
-          setProfiles(profilesMap);
-        }
-      }
     } catch (error) {
       console.error("Ошибка при загрузке данных:", error);
+      setInfo("Ошибка при загрузке данных");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const canAddLawyers = () => {
+    if (!userProfile) return false;
+    return userProfile.leader_role === "GOVERNOR" || userProfile.gov_role === "TECH_ADMIN";
+  };
+
+  const canRequestLawyer = () => {
+    if (!userProfile) return false;
+    return true; // Любой пользователь может запросить адвоката
+  };
+
+  const handleAddLawyer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userProfile) return;
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Пользователь не авторизован");
+
+      const { error } = await supabase
+        .from("lawyers")
+        .insert({
+          user_id: user.id,
+          name: addLawyerForm.name,
+          type: addLawyerForm.type,
+          specialization: addLawyerForm.specialization.split(",").map(s => s.trim()),
+          experience: addLawyerForm.experience,
+          contact: addLawyerForm.contact || null,
+          price: addLawyerForm.price || null,
+          status: "available"
+        });
+
+      if (error) throw error;
+
+      setAddLawyerForm({
+        name: "",
+        type: "government",
+        specialization: "",
+        experience: 0,
+        contact: "",
+        price: ""
+      });
+      setShowAddLawyerModal(false);
+      await loadData();
+    } catch (error) {
+      console.error("Ошибка при добавлении адвоката:", error);
+      setInfo("Ошибка при добавлении адвоката");
     }
   };
 
@@ -169,14 +199,23 @@ export default function LawyersPage() {
       await loadData();
     } catch (error) {
       console.error("Ошибка при создании запроса:", error);
+      setInfo("Ошибка при создании запроса");
     }
   };
 
-  const getTypeLabel = (type: string) => {
-    switch (type) {
-      case "government": return "Государственный";
-      case "private": return "Частный";
-      default: return type;
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "available": return "bg-green-100 text-green-800";
+      case "busy": return "bg-yellow-100 text-yellow-800";
+      case "unavailable": return "bg-red-100 text-red-800";
+      case "pending": return "bg-blue-100 text-blue-800";
+      case "approved": return "bg-green-100 text-green-800";
+      case "rejected": return "bg-red-100 text-red-800";
+      case "assigned": return "bg-purple-100 text-purple-800";
+      case "active": return "bg-green-100 text-green-800";
+      case "completed": return "bg-gray-100 text-gray-800";
+      case "terminated": return "bg-red-100 text-red-800";
+      default: return "bg-gray-100 text-gray-800";
     }
   };
 
@@ -185,411 +224,448 @@ export default function LawyersPage() {
       case "available": return "Доступен";
       case "busy": return "Занят";
       case "unavailable": return "Недоступен";
-      default: return status;
-    }
-  };
-
-  const getStatusClass = (status: string) => {
-    switch (status) {
-      case "available": return "bg-green-100 text-green-800";
-      case "busy": return "bg-yellow-100 text-yellow-800";
-      case "unavailable": return "bg-red-100 text-red-800";
-      default: return "bg-gray-100 text-gray-800";
-    }
-  };
-
-  const getRequestStatusLabel = (status: string) => {
-    switch (status) {
       case "pending": return "Ожидает";
       case "approved": return "Одобрен";
       case "rejected": return "Отклонен";
       case "assigned": return "Назначен";
+      case "active": return "Активен";
+      case "completed": return "Завершен";
+      case "terminated": return "Расторгнут";
       default: return status;
     }
   };
 
-  const getRequestStatusClass = (status: string) => {
-    switch (status) {
-      case "pending": return "bg-yellow-100 text-yellow-800";
-      case "approved": return "bg-green-100 text-green-800";
-      case "rejected": return "bg-red-100 text-red-800";
-      case "assigned": return "bg-blue-100 text-blue-800";
-      default: return "bg-gray-100 text-gray-800";
-    }
-  };
-
-  const filteredLawyers = lawyers.filter(lawyer => {
-    const matchesType = filter === "all" || lawyer.type === filter;
-    const matchesStatus = statusFilter === "all" || lawyer.status === statusFilter;
-    return matchesType && matchesStatus;
-  });
-
   if (loading) {
     return (
-      <div className="max-w-6xl mx-auto p-6">
-        <div className="text-center py-8">Загрузка...</div>
+      <div className="container mx-auto px-4 py-8">
+        <p className="text-center text-gray-500">Загрузка...</p>
       </div>
     );
   }
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
-      <h1 className="text-2xl font-bold mb-6">Система адвокатов</h1>
-
-      {/* Табы */}
-      <div className="flex space-x-1 mb-6 bg-gray-100 p-1 rounded-lg">
-        <button
-          onClick={() => setActiveTab("lawyers")}
-          className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
-            activeTab === "lawyers"
-              ? "bg-white text-gray-900 shadow-sm"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Адвокаты
-        </button>
-        <button
-          onClick={() => setActiveTab("requests")}
-          className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
-            activeTab === "requests"
-              ? "bg-white text-gray-900 shadow-sm"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Запросы
-        </button>
-        <button
-          onClick={() => setActiveTab("contracts")}
-          className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
-            activeTab === "contracts"
-              ? "bg-white text-gray-900 shadow-sm"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Контракты
-        </button>
-      </div>
-
-      {/* Адвокаты */}
-      {activeTab === "lawyers" && (
-        <div>
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex gap-2">
-              <button
-                onClick={() => setFilter("all")}
-                className={`px-4 py-2 rounded-lg text-sm font-medium ${
-                  filter === "all" 
-                    ? "bg-blue-600 text-white" 
-                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                }`}
-              >
-                Все
-              </button>
-              <button
-                onClick={() => setFilter("government")}
-                className={`px-4 py-2 rounded-lg text-sm font-medium ${
-                  filter === "government" 
-                    ? "bg-blue-600 text-white" 
-                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                }`}
-              >
-                Государственные
-              </button>
-              <button
-                onClick={() => setFilter("private")}
-                className={`px-4 py-2 rounded-lg text-sm font-medium ${
-                  filter === "private" 
-                    ? "bg-blue-600 text-white" 
-                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                }`}
-              >
-                Частные
-              </button>
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                onClick={() => setStatusFilter("all")}
-                className={`px-4 py-2 rounded-lg text-sm font-medium ${
-                  statusFilter === "all" 
-                    ? "bg-blue-600 text-white" 
-                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                }`}
-              >
-                Все статусы
-              </button>
-              <button
-                onClick={() => setStatusFilter("available")}
-                className={`px-4 py-2 rounded-lg text-sm font-medium ${
-                  statusFilter === "available" 
-                    ? "bg-blue-600 text-white" 
-                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                }`}
-              >
-                Доступные
-              </button>
-            </div>
+    <div className="container mx-auto px-4 py-8">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-3xl font-bold">Адвокаты и правовая помощь</h1>
+            <p className="text-gray-600 mt-2">
+              Система управления адвокатами, запросами на правовую помощь и договорами
+            </p>
           </div>
-
-          <div className="grid gap-4">
-            {filteredLawyers.length > 0 ? (
-              filteredLawyers.map((lawyer) => (
-                <div key={lawyer.id} className="bg-white rounded-lg border p-6">
-                  <div className="flex items-start justify-between mb-4">
-                    <div>
-                      <h3 className="text-lg font-semibold">{lawyer.name}</h3>
-                      <p className="text-sm text-gray-600">
-                        {getTypeLabel(lawyer.type)} адвокат
-                      </p>
-                    </div>
-                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusClass(lawyer.status)}`}>
-                      {getStatusLabel(lawyer.status)}
-                    </span>
-                  </div>
-
-                  <div className="grid md:grid-cols-3 gap-4 text-sm mb-4">
-                    <div>
-                      <span className="text-gray-500">Опыт:</span>{" "}
-                      <span className="font-medium">{lawyer.experience} лет</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-500">Рейтинг:</span>{" "}
-                      <span className="font-medium">{lawyer.rating}/5</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-500">Дела:</span>{" "}
-                      <span className="font-medium">{lawyer.cases_count}</span>
-                    </div>
-                  </div>
-
-                  {lawyer.specialization.length > 0 && (
-                    <div className="mb-4">
-                      <span className="text-sm text-gray-500">Специализация:</span>
-                      <div className="flex flex-wrap gap-2 mt-1">
-                        {lawyer.specialization.map((spec, index) => (
-                          <span
-                            key={index}
-                            className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs"
-                          >
-                            {spec}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {lawyer.type === "private" && lawyer.price && (
-                    <div className="text-sm text-gray-600">
-                      <span className="text-gray-500">Стоимость:</span> {lawyer.price}
-                    </div>
-                  )}
-
-                  {lawyer.type === "government" && lawyer.status === "available" && (
-                    <button
-                      onClick={() => {
-                        setActiveTab("requests");
-                        setShowRequestModal(true);
-                      }}
-                      className="mt-4 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-                    >
-                      Запросить адвоката
-                    </button>
-                  )}
-                </div>
-              ))
-            ) : (
-              <div className="text-center py-8 text-gray-500">
-                Адвокаты не найдены
-              </div>
+          <div className="flex gap-2">
+            {canRequestLawyer() && (
+              <button
+                onClick={() => setShowRequestModal(true)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+              >
+                Запросить адвоката
+              </button>
+            )}
+            {canAddLawyers() && (
+              <button
+                onClick={() => setShowAddLawyerModal(true)}
+                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+              >
+                Добавить адвоката
+              </button>
             )}
           </div>
         </div>
-      )}
 
-      {/* Запросы */}
-      {activeTab === "requests" && (
-        <div>
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-lg font-semibold">Запросы на адвоката</h2>
+        {info && (
+          <div className="mb-4 p-4 bg-red-100 text-red-700 rounded-md">
+            {info}
+          </div>
+        )}
+
+        {/* Табы */}
+        <div className="mb-6">
+          <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg">
             <button
-              onClick={() => setShowRequestModal(true)}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+              onClick={() => setActiveTab("lawyers")}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeTab === "lawyers"
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-600 hover:text-gray-900"
+              }`}
             >
-              Новый запрос
+              Адвокаты ({lawyers.length})
+            </button>
+            <button
+              onClick={() => setActiveTab("requests")}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeTab === "requests"
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              Запросы ({requests.length})
+            </button>
+            <button
+              onClick={() => setActiveTab("contracts")}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeTab === "contracts"
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              Договоры ({contracts.length})
             </button>
           </div>
-
-          <div className="grid gap-4">
-            {requests.length > 0 ? (
-              requests.map((request) => (
-                <div key={request.id} className="bg-white rounded-lg border p-6">
-                  <div className="flex items-start justify-between mb-4">
-                    <div>
-                      <h3 className="font-semibold">{request.client_name}</h3>
-                      <p className="text-sm text-gray-600">ID: {request.client_static_id}</p>
-                    </div>
-                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${getRequestStatusClass(request.status)}`}>
-                      {getRequestStatusLabel(request.status)}
-                    </span>
-                  </div>
-
-                  <div className="space-y-2 text-sm">
-                    <div>
-                      <span className="text-gray-500">Тип дела:</span>{" "}
-                      <span className="font-medium">{request.case_type}</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-500">Описание:</span>{" "}
-                      <span className="font-medium">{request.description}</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-500">Дата запроса:</span>{" "}
-                      <span className="font-medium">
-                        {new Date(request.created_at).toLocaleDateString("ru-RU")}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="text-center py-8 text-gray-500">
-                Нет запросов на адвоката
-              </div>
-            )}
-          </div>
         </div>
-      )}
 
-      {/* Контракты */}
-      {activeTab === "contracts" && (
-        <div>
-          <h2 className="text-lg font-semibold mb-6">Контракты с адвокатами</h2>
-          <div className="grid gap-4">
-            {contracts.length > 0 ? (
-              contracts.map((contract) => (
-                <div key={contract.id} className="bg-white rounded-lg border p-6">
-                  <div className="flex items-start justify-between mb-4">
-                    <div>
-                      <h3 className="font-semibold">
-                        Контракт {contract.case_number ? `№${contract.case_number}` : ""}
-                      </h3>
-                      <p className="text-sm text-gray-600">
-                        {profiles[contract.client_id]?.nickname || "Неизвестный клиент"}
-                      </p>
-                    </div>
-                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                      contract.status === "active" ? "bg-green-100 text-green-800" :
-                      contract.status === "completed" ? "bg-blue-100 text-blue-800" :
-                      "bg-red-100 text-red-800"
-                    }`}>
-                      {contract.status === "active" ? "Активен" :
-                       contract.status === "completed" ? "Завершен" : "Расторгнут"}
-                    </span>
-                  </div>
-
-                  <div className="space-y-2 text-sm">
-                    <div>
-                      <span className="text-gray-500">Условия:</span>{" "}
-                      <span className="font-medium">{contract.contract_terms}</span>
-                    </div>
-                    {contract.fee_amount && (
-                      <div>
-                        <span className="text-gray-500">Стоимость:</span>{" "}
-                        <span className="font-medium">{contract.fee_amount} {contract.fee_currency}</span>
-                      </div>
-                    )}
-                    <div>
-                      <span className="text-gray-500">Дата начала:</span>{" "}
-                      <span className="font-medium">
-                        {new Date(contract.start_date).toLocaleDateString("ru-RU")}
-                      </span>
-                    </div>
-                    {contract.end_date && (
-                      <div>
-                        <span className="text-gray-500">Дата окончания:</span>{" "}
-                        <span className="font-medium">
-                          {new Date(contract.end_date).toLocaleDateString("ru-RU")}
+        {/* Контент табов */}
+        {activeTab === "lawyers" && (
+          <div className="bg-white rounded-lg shadow-md">
+            <div className="p-6 border-b">
+              <h2 className="text-xl font-semibold">Список адвокатов</h2>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Имя
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Тип
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Специализация
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Опыт
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Статус
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Контакт
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {lawyers.map((lawyer) => (
+                    <tr key={lawyer.id}>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-medium text-gray-900">{lawyer.name}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                          lawyer.type === "government" ? "bg-blue-100 text-blue-800" : "bg-purple-100 text-purple-800"
+                        }`}>
+                          {lawyer.type === "government" ? "Государственный" : "Частный"}
                         </span>
-                      </div>
-                    )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">
+                          {lawyer.specialization.join(", ")}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">{lawyer.experience} лет</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(lawyer.status)}`}>
+                          {getStatusLabel(lawyer.status)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">{lawyer.contact || "-"}</div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {lawyers.length === 0 && (
+                <div className="text-center py-8">
+                  <p className="text-gray-500">Адвокаты не найдены</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeTab === "requests" && (
+          <div className="bg-white rounded-lg shadow-md">
+            <div className="p-6 border-b">
+              <h2 className="text-xl font-semibold">Запросы на адвоката</h2>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Клиент
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Тип дела
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Описание
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Статус
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Дата
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {requests.map((request) => (
+                    <tr key={request.id}>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-medium text-gray-900">{request.client_name}</div>
+                        <div className="text-sm text-gray-500">{request.client_static_id}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">{request.case_type}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm text-gray-900 max-w-xs truncate">{request.description}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(request.status)}`}>
+                          {getStatusLabel(request.status)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">
+                          {new Date(request.created_at).toLocaleDateString("ru-RU")}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {requests.length === 0 && (
+                <div className="text-center py-8">
+                  <p className="text-gray-500">Запросы не найдены</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeTab === "contracts" && (
+          <div className="bg-white rounded-lg shadow-md">
+            <div className="p-6 border-b">
+              <h2 className="text-xl font-semibold">Договоры адвокатов</h2>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Номер дела
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Условия
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Сумма
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Статус
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Дата начала
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {contracts.map((contract) => (
+                    <tr key={contract.id}>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-medium text-gray-900">{contract.case_number || "-"}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm text-gray-900 max-w-xs truncate">{contract.contract_terms}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">
+                          {contract.fee_amount ? `${contract.fee_amount} ${contract.fee_currency}` : "-"}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(contract.status)}`}>
+                          {getStatusLabel(contract.status)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">
+                          {new Date(contract.start_date).toLocaleDateString("ru-RU")}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {contracts.length === 0 && (
+                <div className="text-center py-8">
+                  <p className="text-gray-500">Договоры не найдены</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Модальное окно добавления адвоката */}
+        {showAddLawyerModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md">
+              <h3 className="text-lg font-semibold mb-4">Добавить адвоката</h3>
+              <form onSubmit={handleAddLawyer}>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Имя адвоката
+                    </label>
+                    <input
+                      type="text"
+                      value={addLawyerForm.name}
+                      onChange={(e) => setAddLawyerForm({...addLawyerForm, name: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Тип
+                    </label>
+                    <select
+                      value={addLawyerForm.type}
+                      onChange={(e) => setAddLawyerForm({...addLawyerForm, type: e.target.value as "government" | "private"})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="government">Государственный</option>
+                      <option value="private">Частный</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Специализация (через запятую)
+                    </label>
+                    <input
+                      type="text"
+                      value={addLawyerForm.specialization}
+                      onChange={(e) => setAddLawyerForm({...addLawyerForm, specialization: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Уголовное право, Гражданское право"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Опыт (лет)
+                    </label>
+                    <input
+                      type="number"
+                      value={addLawyerForm.experience}
+                      onChange={(e) => setAddLawyerForm({...addLawyerForm, experience: parseInt(e.target.value)})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      min="0"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Контакт
+                    </label>
+                    <input
+                      type="text"
+                      value={addLawyerForm.contact}
+                      onChange={(e) => setAddLawyerForm({...addLawyerForm, contact: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Цена (для частных)
+                    </label>
+                    <input
+                      type="text"
+                      value={addLawyerForm.price}
+                      onChange={(e) => setAddLawyerForm({...addLawyerForm, price: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="1000$ за час"
+                    />
                   </div>
                 </div>
-              ))
-            ) : (
-              <div className="text-center py-8 text-gray-500">
-                Нет контрактов с адвокатами
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Модальное окно запроса */}
-      {showRequestModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full">
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold">Запрос на государственного адвоката</h2>
-                <button
-                  onClick={() => setShowRequestModal(false)}
-                  className="text-gray-500 hover:text-gray-700"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-
-              <form onSubmit={handleRequestSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Тип дела
-                  </label>
-                  <input
-                    type="text"
-                    value={requestForm.caseType}
-                    onChange={(e) => setRequestForm({ ...requestForm, caseType: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Например: уголовное, гражданское"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Описание ситуации
-                  </label>
-                  <textarea
-                    value={requestForm.description}
-                    onChange={(e) => setRequestForm({ ...requestForm, description: e.target.value })}
-                    rows={4}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Опишите вашу ситуацию..."
-                    required
-                  />
-                </div>
-
-                <div className="flex gap-3 pt-4">
-                  <button
-                    type="submit"
-                    className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
-                  >
-                    Отправить запрос
-                  </button>
+                <div className="flex justify-end space-x-3 mt-6">
                   <button
                     type="button"
-                    onClick={() => setShowRequestModal(false)}
-                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
+                    onClick={() => setShowAddLawyerModal(false)}
+                    className="px-4 py-2 text-gray-600 hover:text-gray-800"
                   >
                     Отмена
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+                  >
+                    Добавить
                   </button>
                 </div>
               </form>
             </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {/* Модальное окно запроса на адвоката */}
+        {showRequestModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md">
+              <h3 className="text-lg font-semibold mb-4">Запросить адвоката</h3>
+              <form onSubmit={handleRequestSubmit}>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Тип дела
+                    </label>
+                    <input
+                      type="text"
+                      value={requestForm.caseType}
+                      onChange={(e) => setRequestForm({...requestForm, caseType: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Уголовное дело, Гражданский спор"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Описание ситуации
+                    </label>
+                    <textarea
+                      value={requestForm.description}
+                      onChange={(e) => setRequestForm({...requestForm, description: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      rows={4}
+                      placeholder="Опишите вашу ситуацию..."
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end space-x-3 mt-6">
+                  <button
+                    type="button"
+                    onClick={() => setShowRequestModal(false)}
+                    className="px-4 py-2 text-gray-600 hover:text-gray-800"
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                  >
+                    Отправить запрос
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
