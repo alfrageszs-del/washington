@@ -15,6 +15,12 @@ import type {
   DepartmentLabel
 } from "../../lib/supabase/client";
 
+// Импортируем типы из отдельного файла
+import type { 
+  RoleChangeRequestType as RCRType,
+  RoleChangeRequestStatus 
+} from "../../role_change_types";
+
 type RoleChangeRequestFormProps = {
   userId: string;
   currentProfile: {
@@ -33,13 +39,13 @@ export default function RoleChangeRequestForm({
   onSuccess, 
   onCancel 
 }: RoleChangeRequestFormProps) {
-  const [requestType, setRequestType] = useState<RoleChangeRequestType>("FACTION");
+  const [requestType, setRequestType] = useState<RCRType>("FACTION");
   const [requestedValue, setRequestedValue] = useState<string>("");
   const [reason, setReason] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string>("");
 
-  const getCurrentValue = (type: RoleChangeRequestType): string | null => {
+  const getCurrentValue = (type: RCRType): string | null => {
     switch (type) {
       case "FACTION":
         return currentProfile.faction;
@@ -54,7 +60,7 @@ export default function RoleChangeRequestForm({
     }
   };
 
-  const getOptions = (type: RoleChangeRequestType): { value: string; label: string }[] => {
+  const getOptions = (type: RCRType): { value: string; label: string }[] => {
     switch (type) {
       case "FACTION":
         return Object.entries(FactionLabel).map(([value, label]) => ({ value, label }));
@@ -134,7 +140,7 @@ export default function RoleChangeRequestForm({
           <select
             value={requestType}
             onChange={(e) => {
-              setRequestType(e.target.value as RoleChangeRequestType);
+              setRequestType(e.target.value as RCRType);
               setRequestedValue("");
             }}
             className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"

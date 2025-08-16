@@ -159,8 +159,11 @@ CREATE POLICY "Users can update their own notifications" ON notifications
 -- =====================================================
 
 -- Обновляем политику профилей, чтобы пользователи не могли изменять роли напрямую
+-- Сначала удаляем старую политику, если она существует
 DROP POLICY IF EXISTS "Users can update their own profile (except roles)" ON profiles;
+DROP POLICY IF EXISTS "Users can update their own profile" ON profiles;
 
+-- Создаем новую политику, которая разрешает обновление только определенных полей
 CREATE POLICY "Users can update their own profile (except roles)" ON profiles
     FOR UPDATE USING (
         auth.uid() = id 

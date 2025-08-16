@@ -400,9 +400,17 @@ export default function AccountPage() {
 
           <div className="block">
             <span className="mb-1 block text-sm">Фракция</span>
-            <div className="w-full rounded-lg border px-3 py-2 text-sm bg-gray-50 text-gray-600">
-              {FactionLabel[faction]}
-            </div>
+            <select
+              className="w-full rounded-lg border px-3 py-2 text-sm bg-gray-50 text-gray-600 cursor-not-allowed"
+              value={faction}
+              disabled
+            >
+              {factions.map((f) => (
+                <option key={f} value={f}>
+                  {FactionLabel[f]}
+                </option>
+              ))}
+            </select>
             <p className="mt-1 text-xs text-gray-500">
               Для изменения фракции используйте систему запросов ниже
             </p>
