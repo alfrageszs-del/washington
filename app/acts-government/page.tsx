@@ -11,6 +11,7 @@ type GovActRow = {
   content: string;
   created_at: string;
   status: string;
+  source_url?: string;
 };
 
 export default function GovActsPage() {
@@ -37,7 +38,7 @@ export default function GovActsPage() {
       // 1) список опубликованных (берём author_id, чтобы знать права)
       const { data: rows, error: selErr } = await supabase
         .from("gov_acts")
-        .select("id,author_id,title,content,created_at,status")
+        .select("id,author_id,title,content,created_at,status,source_url")
         .eq("status", "published")
         .order("created_at", { ascending: false });
 

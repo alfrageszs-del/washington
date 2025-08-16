@@ -11,6 +11,7 @@ type CourtActRow = {
   content: string;
   created_at: string;
   status: string;
+  source_url?: string;
 };
 
 export default function CourtActsPage() {
@@ -36,7 +37,7 @@ export default function CourtActsPage() {
 
       const { data: rows, error: selErr } = await supabase
         .from("court_acts")
-        .select("id,judge_id,title,content,created_at,status")
+        .select("id,judge_id,title,content,created_at,status,source_url")
         .eq("status", "published")
         .order("created_at", { ascending: false });
 
@@ -108,7 +109,7 @@ export default function CourtActsPage() {
   const loadActs = async () => {
     const { data: rows, error: selErr } = await supabase
       .from("court_acts")
-      .select("id,judge_id,title,content,created_at,status")
+      .select("id,judge_id,title,content,created_at,status,source_url")
       .eq("status", "published")
       .order("created_at", { ascending: false });
 
