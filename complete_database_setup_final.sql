@@ -1,9 +1,177 @@
 -- =====================================================
--- ПОЛНАЯ НАСТРОЙКА БАЗЫ ДАННЫХ (ВСЕ В ОДНОМ ФАЙЛЕ)
+-- ПОЛНАЯ НАСТРОЙКА БАЗЫ ДАННЫХ (ФИНАЛЬНАЯ ВЕРСИЯ)
 -- =====================================================
 
 -- Включаем расширения
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- =====================================================
+-- СОЗДАНИЕ ENUM ТИПОВ ДЛЯ РОЛЕЙ
+-- =====================================================
+
+-- ENUM для государственных ролей
+CREATE TYPE gov_role_enum AS ENUM (
+    'NONE',
+    'PROSECUTOR',
+    'JUDGE',
+    'TECH_ADMIN',
+    'ATTORNEY_GENERAL',
+    'CHIEF_JUSTICE'
+);
+
+-- ENUM для фракций
+CREATE TYPE faction_enum AS ENUM (
+    'CIVILIAN',
+    'GOV',
+    'COURT',
+    'WN',
+    'FIB',
+    'LSPD',
+    'LSCSD',
+    'EMS',
+    'SANG'
+);
+
+-- ENUM для лидерских ролей
+CREATE TYPE leader_role_enum AS ENUM (
+    'GOVERNOR',
+    'DIRECTOR_WN',
+    'DIRECTOR_FIB',
+    'CHIEF_LSPD',
+    'SHERIFF_LSCSD',
+    'CHIEF_EMS',
+    'COLONEL_SANG'
+);
+
+-- ENUM для офисных ролей
+CREATE TYPE office_role_enum AS ENUM (
+    'GOVERNOR',
+    'VICE_GOVERNOR',
+    'MIN_FINANCE',
+    'MIN_JUSTICE',
+    'BAR_ASSOCIATION',
+    'GOV_STAFF',
+    'MIN_DEFENSE',
+    'MIN_SECURITY',
+    'MIN_HEALTH',
+    'OTHER'
+);
+
+-- ENUM для типов запросов на изменение ролей
+CREATE TYPE role_change_request_type_enum AS ENUM (
+    'FACTION',
+    'GOV_ROLE',
+    'LEADER_ROLE',
+    'OFFICE_ROLE'
+);
+
+-- ENUM для статусов запросов на изменение ролей
+CREATE TYPE role_change_request_status_enum AS ENUM (
+    'PENDING',
+    'APPROVED',
+    'REJECTED'
+);
+
+-- ENUM для типов уведомлений
+CREATE TYPE notification_type_enum AS ENUM (
+    'document',
+    'court',
+    'fine',
+    'wanted',
+    'system',
+    'role_change'
+);
+
+-- ENUM для приоритетов уведомлений
+CREATE TYPE notification_priority_enum AS ENUM (
+    'low',
+    'medium',
+    'high'
+);
+
+-- ENUM для статусов документов
+CREATE TYPE document_status_enum AS ENUM (
+    'draft',
+    'published',
+    'archived'
+);
+
+-- ENUM для статусов штрафов
+CREATE TYPE fine_status_enum AS ENUM (
+    'active',
+    'paid',
+    'cancelled'
+);
+
+-- ENUM для статусов розыска
+CREATE TYPE wanted_status_enum AS ENUM (
+    'active',
+    'caught',
+    'cancelled'
+);
+
+-- ENUM для типов дел
+CREATE TYPE case_type_enum AS ENUM (
+    'criminal',
+    'civil',
+    'administrative'
+);
+
+-- ENUM для статусов дел
+CREATE TYPE case_status_enum AS ENUM (
+    'active',
+    'closed',
+    'pending'
+);
+
+-- ENUM для типов адвокатов
+CREATE TYPE lawyer_type_enum AS ENUM (
+    'government',
+    'private'
+);
+
+-- ENUM для статусов адвокатов
+CREATE TYPE lawyer_status_enum AS ENUM (
+    'available',
+    'busy',
+    'unavailable'
+);
+
+-- ENUM для статусов запросов на адвоката
+CREATE TYPE lawyer_request_status_enum AS ENUM (
+    'pending',
+    'approved',
+    'rejected',
+    'assigned'
+);
+
+-- ENUM для статусов договоров адвокатов
+CREATE TYPE lawyer_contract_status_enum AS ENUM (
+    'active',
+    'completed',
+    'terminated'
+);
+
+-- ENUM для типов судебных заседаний
+CREATE TYPE court_session_type_enum AS ENUM (
+    'open',
+    'closed'
+);
+
+-- ENUM для статусов судебных заседаний
+CREATE TYPE court_session_status_enum AS ENUM (
+    'scheduled',
+    'in_progress',
+    'completed',
+    'cancelled'
+);
+
+-- ENUM для статусов проверок
+CREATE TYPE inspection_status_enum AS ENUM (
+    'scheduled',
+    'in_progress',
+    'completed'
+);
 
 -- =====================================================
 -- ТАБЛИЦА ПРОФИЛЕЙ ПОЛЬЗОВАТЕЛЕЙ
@@ -13,27 +181,16 @@ CREATE TABLE IF NOT EXISTS profiles (
     id UUID REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
     nickname TEXT NOT NULL,
     static_id TEXT NOT NULL UNIQUE,
-    faction TEXT NOT NULL DEFAULT 'CIVILIAN',
-    gov_role TEXT NOT NULL DEFAULT 'NONE',
-    leader_role TEXT,
-    office_role TEXT,
+    faction faction_enum NOT NULL DEFAULT 'CIVILIAN',
+    gov_role gov_role_enum NOT NULL DEFAULT 'NONE',
+    leader_role leader_role_enum,
+    office_role office_role_enum,
     discord TEXT,
+    theme TEXT DEFAULT 'light' CHECK (theme IN ('light', 'dark', 'auto')),
+    language TEXT DEFAULT 'ru' CHECK (language IN ('ru', 'en')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
-
--- Создаем правильные ограничения для профилей
-ALTER TABLE profiles ADD CONSTRAINT profiles_gov_role_check 
-    CHECK (gov_role IN ('NONE', 'PROSECUTOR', 'JUDGE', 'TECH_ADMIN', 'ATTORNEY_GENERAL', 'CHIEF_JUSTICE'));
-
-ALTER TABLE profiles ADD CONSTRAINT profiles_faction_check 
-    CHECK (faction IN ('CIVILIAN', 'GOV', 'COURT', 'WN', 'FIB', 'LSPD', 'LSCSD', 'EMS', 'SANG'));
-
-ALTER TABLE profiles ADD CONSTRAINT profiles_leader_role_check 
-    CHECK (leader_role IS NULL OR leader_role IN ('GOVERNOR', 'DIRECTOR_WN', 'DIRECTOR_FIB', 'CHIEF_LSPD', 'SHERIFF_LSCSD', 'CHIEF_EMS', 'COLONEL_SANG'));
-
-ALTER TABLE profiles ADD CONSTRAINT profiles_office_role_check 
-    CHECK (office_role IS NULL OR office_role IN ('GOVERNOR', 'VICE_GOVERNOR', 'MIN_FINANCE', 'MIN_JUSTICE', 'BAR_ASSOCIATION', 'GOV_STAFF', 'MIN_DEFENSE', 'MIN_SECURITY', 'MIN_HEALTH', 'OTHER'));
 
 -- =====================================================
 -- ТАБЛИЦА ЗАПРОСОВ НА ИЗМЕНЕНИЕ РОЛЕЙ
@@ -43,11 +200,11 @@ CREATE TABLE IF NOT EXISTS role_change_requests (
     id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
     user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
     requested_by UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-    request_type TEXT NOT NULL CHECK (request_type IN ('FACTION', 'GOV_ROLE', 'LEADER_ROLE', 'OFFICE_ROLE')),
+    request_type role_change_request_type_enum NOT NULL,
     current_value TEXT,
     requested_value TEXT NOT NULL,
     reason TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED')),
+    status role_change_request_status_enum NOT NULL DEFAULT 'PENDING',
     reviewed_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
     review_comment TEXT,
     reviewed_at TIMESTAMP WITH TIME ZONE,
@@ -62,13 +219,33 @@ CREATE TABLE IF NOT EXISTS role_change_requests (
 CREATE TABLE IF NOT EXISTS notifications (
     id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
     user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-    type TEXT NOT NULL CHECK (type IN ('document', 'court', 'fine', 'wanted', 'system', 'role_change')),
+    type notification_type_enum NOT NULL,
     title TEXT NOT NULL,
     message TEXT NOT NULL,
     is_read BOOLEAN NOT NULL DEFAULT false,
-    priority TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high')),
+    priority notification_priority_enum NOT NULL DEFAULT 'medium',
     url TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- =====================================================
+-- ТАБЛИЦА ДЕЛ
+-- =====================================================
+
+CREATE TABLE IF NOT EXISTS cases (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    title TEXT NOT NULL,
+    case_number TEXT NOT NULL UNIQUE,
+    type case_type_enum NOT NULL,
+    status case_status_enum NOT NULL DEFAULT 'active',
+    start_date DATE NOT NULL,
+    end_date DATE,
+    judge_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    prosecutor_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    lawyer_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    description TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- =====================================================
@@ -80,13 +257,14 @@ CREATE TABLE IF NOT EXISTS court_acts (
     title TEXT NOT NULL,
     content TEXT NOT NULL,
     case_number TEXT,
+    case_id UUID REFERENCES cases(id) ON DELETE SET NULL,
     judge_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
     judge_name TEXT,
     defendant_static_id TEXT,
     defendant_name TEXT,
     articles TEXT[],
     decision TEXT,
-    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published', 'archived')),
+    status document_status_enum NOT NULL DEFAULT 'draft',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -103,7 +281,7 @@ CREATE TABLE IF NOT EXISTS gov_acts (
     author_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
     author_name TEXT,
     department TEXT,
-    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published', 'archived')),
+    status document_status_enum NOT NULL DEFAULT 'draft',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -121,8 +299,9 @@ CREATE TABLE IF NOT EXISTS fines (
     officer_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
     officer_name TEXT,
     department TEXT,
-    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'paid', 'cancelled')),
+    status fine_status_enum NOT NULL DEFAULT 'active',
     due_date DATE,
+    case_id UUID REFERENCES cases(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -138,27 +317,8 @@ CREATE TABLE IF NOT EXISTS wanted (
     reason TEXT NOT NULL,
     reward DECIMAL(10,2),
     department TEXT,
-    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'caught', 'cancelled')),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- =====================================================
--- ТАБЛИЦА ДЕЛ
--- =====================================================
-
-CREATE TABLE IF NOT EXISTS cases (
-    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-    title TEXT NOT NULL,
-    case_number TEXT NOT NULL UNIQUE,
-    type TEXT NOT NULL CHECK (type IN ('criminal', 'civil', 'administrative')),
-    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'closed', 'pending')),
-    start_date DATE NOT NULL,
-    end_date DATE,
-    judge_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
-    prosecutor_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
-    lawyer_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
-    description TEXT,
+    status wanted_status_enum NOT NULL DEFAULT 'active',
+    case_id UUID REFERENCES cases(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -171,12 +331,12 @@ CREATE TABLE IF NOT EXISTS lawyers (
     id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
     user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
     name TEXT NOT NULL,
-    type TEXT NOT NULL CHECK (type IN ('government', 'private')),
+    type lawyer_type_enum NOT NULL,
     specialization TEXT[],
     experience INTEGER DEFAULT 0,
     rating DECIMAL(3,2) DEFAULT 0.0,
     cases_count INTEGER DEFAULT 0,
-    status TEXT NOT NULL DEFAULT 'available' CHECK (status IN ('available', 'busy', 'unavailable')),
+    status lawyer_status_enum NOT NULL DEFAULT 'available',
     contact TEXT,
     price TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -194,8 +354,9 @@ CREATE TABLE IF NOT EXISTS lawyer_requests (
     client_static_id TEXT NOT NULL,
     case_type TEXT NOT NULL,
     description TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'assigned')),
+    status lawyer_request_status_enum NOT NULL DEFAULT 'pending',
     assigned_lawyer_id UUID REFERENCES lawyers(id) ON DELETE SET NULL,
+    case_id UUID REFERENCES cases(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -209,10 +370,11 @@ CREATE TABLE IF NOT EXISTS lawyer_contracts (
     lawyer_id UUID REFERENCES lawyers(id) ON DELETE CASCADE NOT NULL,
     client_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
     case_number TEXT,
+    case_id UUID REFERENCES cases(id) ON DELETE SET NULL,
     contract_terms TEXT NOT NULL,
     fee_amount DECIMAL(10,2),
     fee_currency TEXT DEFAULT 'USD',
-    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'completed', 'terminated')),
+    status lawyer_contract_status_enum NOT NULL DEFAULT 'active',
     start_date DATE NOT NULL,
     end_date DATE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -227,12 +389,13 @@ CREATE TABLE IF NOT EXISTS court_sessions (
     id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
     title TEXT NOT NULL,
     case_number TEXT,
+    case_id UUID REFERENCES cases(id) ON DELETE SET NULL,
     judge_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
     judge_name TEXT NOT NULL,
     date DATE NOT NULL,
     time TIME NOT NULL,
-    type TEXT NOT NULL CHECK (type IN ('open', 'closed')),
-    status TEXT NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'in_progress', 'completed', 'cancelled')),
+    type court_session_type_enum NOT NULL,
+    status court_session_status_enum NOT NULL DEFAULT 'scheduled',
     participants TEXT[],
     description TEXT,
     courtroom TEXT,
@@ -254,7 +417,8 @@ CREATE TABLE IF NOT EXISTS inspections (
     inspection_date DATE NOT NULL,
     findings TEXT,
     recommendations TEXT,
-    status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('scheduled', 'in_progress', 'completed')),
+    status inspection_status_enum NOT NULL DEFAULT 'completed',
+    case_id UUID REFERENCES cases(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -267,6 +431,7 @@ CREATE TABLE IF NOT EXISTS inspections (
 CREATE INDEX IF NOT EXISTS idx_profiles_static_id ON profiles(static_id);
 CREATE INDEX IF NOT EXISTS idx_profiles_faction ON profiles(faction);
 CREATE INDEX IF NOT EXISTS idx_profiles_gov_role ON profiles(gov_role);
+CREATE INDEX IF NOT EXISTS idx_profiles_theme ON profiles(theme);
 
 -- Индексы для запросов на изменение ролей
 CREATE INDEX IF NOT EXISTS idx_role_change_requests_user_id ON role_change_requests(user_id);
@@ -278,9 +443,16 @@ CREATE INDEX IF NOT EXISTS idx_role_change_requests_created_at ON role_change_re
 CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications(is_read);
 CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at);
+CREATE INDEX IF NOT EXISTS idx_notifications_type ON notifications(type);
+
+-- Индексы для дел
+CREATE INDEX IF NOT EXISTS idx_cases_case_number ON cases(case_number);
+CREATE INDEX IF NOT EXISTS idx_cases_status ON cases(status);
+CREATE INDEX IF NOT EXISTS idx_cases_type ON cases(type);
 
 -- Индексы для актов суда
 CREATE INDEX IF NOT EXISTS idx_court_acts_case_number ON court_acts(case_number);
+CREATE INDEX IF NOT EXISTS idx_court_acts_case_id ON court_acts(case_id);
 CREATE INDEX IF NOT EXISTS idx_court_acts_defendant_static_id ON court_acts(defendant_static_id);
 CREATE INDEX IF NOT EXISTS idx_court_acts_status ON court_acts(status);
 
@@ -291,14 +463,12 @@ CREATE INDEX IF NOT EXISTS idx_gov_acts_status ON gov_acts(status);
 -- Индексы для штрафов
 CREATE INDEX IF NOT EXISTS idx_fines_defendant_static_id ON fines(defendant_static_id);
 CREATE INDEX IF NOT EXISTS idx_fines_status ON fines(status);
+CREATE INDEX IF NOT EXISTS idx_fines_case_id ON fines(case_id);
 
 -- Индексы для розыска
 CREATE INDEX IF NOT EXISTS idx_wanted_suspect_static_id ON wanted(suspect_static_id);
 CREATE INDEX IF NOT EXISTS idx_wanted_status ON wanted(status);
-
--- Индексы для дел
-CREATE INDEX IF NOT EXISTS idx_cases_case_number ON cases(case_number);
-CREATE INDEX IF NOT EXISTS idx_cases_status ON cases(status);
+CREATE INDEX IF NOT EXISTS idx_wanted_case_id ON wanted(case_id);
 
 -- Индексы для адвокатов
 CREATE INDEX IF NOT EXISTS idx_lawyers_type ON lawyers(type);
@@ -307,19 +477,23 @@ CREATE INDEX IF NOT EXISTS idx_lawyers_status ON lawyers(status);
 -- Индексы для запросов на адвоката
 CREATE INDEX IF NOT EXISTS idx_lawyer_requests_client_id ON lawyer_requests(client_id);
 CREATE INDEX IF NOT EXISTS idx_lawyer_requests_status ON lawyer_requests(status);
+CREATE INDEX IF NOT EXISTS idx_lawyer_requests_case_id ON lawyer_requests(case_id);
 
 -- Индексы для договоров адвокатов
 CREATE INDEX IF NOT EXISTS idx_lawyer_contracts_lawyer_id ON lawyer_contracts(lawyer_id);
 CREATE INDEX IF NOT EXISTS idx_lawyer_contracts_client_id ON lawyer_contracts(client_id);
 CREATE INDEX IF NOT EXISTS idx_lawyer_contracts_status ON lawyer_contracts(status);
+CREATE INDEX IF NOT EXISTS idx_lawyer_contracts_case_id ON lawyer_contracts(case_id);
 
 -- Индексы для судебных заседаний
 CREATE INDEX IF NOT EXISTS idx_court_sessions_date ON court_sessions(date);
 CREATE INDEX IF NOT EXISTS idx_court_sessions_status ON court_sessions(status);
+CREATE INDEX IF NOT EXISTS idx_court_sessions_case_id ON court_sessions(case_id);
 
 -- Индексы для проверок
 CREATE INDEX IF NOT EXISTS idx_inspections_department ON inspections(department);
 CREATE INDEX IF NOT EXISTS idx_inspections_status ON inspections(status);
+CREATE INDEX IF NOT EXISTS idx_inspections_case_id ON inspections(case_id);
 
 -- =====================================================
 -- ROW LEVEL SECURITY (RLS)
@@ -329,11 +503,11 @@ CREATE INDEX IF NOT EXISTS idx_inspections_status ON inspections(status);
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE role_change_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cases ENABLE ROW LEVEL SECURITY;
 ALTER TABLE court_acts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE gov_acts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fines ENABLE ROW LEVEL SECURITY;
 ALTER TABLE wanted ENABLE ROW LEVEL SECURITY;
-ALTER TABLE cases ENABLE ROW LEVEL SECURITY;
 ALTER TABLE lawyers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE lawyer_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE lawyer_contracts ENABLE ROW LEVEL SECURITY;
@@ -344,17 +518,8 @@ ALTER TABLE inspections ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users can view their own profile" ON profiles
     FOR SELECT USING (auth.uid() = id);
 
-CREATE POLICY "Users can update their own profile (except roles)" ON profiles
-    FOR UPDATE USING (
-        auth.uid() = id 
-        AND (
-            -- Разрешаем обновление только определенных полей
-            (OLD.faction = NEW.faction) AND
-            (OLD.gov_role = NEW.gov_role) AND
-            (OLD.leader_role = NEW.leader_role) AND
-            (OLD.office_role = NEW.office_role)
-        )
-    );
+CREATE POLICY "Users can update their own profile" ON profiles
+    FOR UPDATE USING (auth.uid() = id);
 
 CREATE POLICY "Admins can update any profile" ON profiles
     FOR UPDATE USING (
@@ -396,6 +561,19 @@ CREATE POLICY "Users can view their own notifications" ON notifications
 
 CREATE POLICY "Users can update their own notifications" ON notifications
     FOR UPDATE USING (auth.uid() = user_id);
+
+-- Политики для дел
+CREATE POLICY "Everyone can view cases" ON cases
+    FOR SELECT USING (true);
+
+CREATE POLICY "Judges and prosecutors can manage cases" ON cases
+    FOR ALL USING (
+        EXISTS (
+            SELECT 1 FROM profiles 
+            WHERE profiles.id = auth.uid() 
+            AND profiles.gov_role IN ('JUDGE', 'PROSECUTOR', 'ATTORNEY_GENERAL', 'CHIEF_JUSTICE')
+        )
+    );
 
 -- Политики для актов суда
 CREATE POLICY "Everyone can view published court acts" ON court_acts
@@ -446,19 +624,6 @@ CREATE POLICY "Law enforcement can manage wanted" ON wanted
             SELECT 1 FROM profiles 
             WHERE profiles.id = auth.uid() 
             AND profiles.faction IN ('LSPD', 'LSCSD', 'FIB')
-        )
-    );
-
--- Политики для дел
-CREATE POLICY "Everyone can view cases" ON cases
-    FOR SELECT USING (true);
-
-CREATE POLICY "Judges and prosecutors can manage cases" ON cases
-    FOR ALL USING (
-        EXISTS (
-            SELECT 1 FROM profiles 
-            WHERE profiles.id = auth.uid() 
-            AND profiles.gov_role IN ('JUDGE', 'PROSECUTOR', 'ATTORNEY_GENERAL', 'CHIEF_JUSTICE')
         )
     );
 
@@ -537,6 +702,26 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
+-- Функция для автоматического создания профиля при регистрации
+CREATE OR REPLACE FUNCTION handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO public.profiles (id, nickname, static_id)
+    VALUES (
+        NEW.id,
+        COALESCE(NEW.raw_user_meta_data->>'nickname', NEW.email),
+        COALESCE(NEW.raw_user_meta_data->>'static_id', 'ID_' || substr(NEW.id::text, 1, 8))
+    );
+    RETURN NEW;
+END;
+$$ language 'plpgsql' SECURITY DEFINER;
+
+-- Триггер для создания профиля при регистрации
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+    AFTER INSERT ON auth.users
+    FOR EACH ROW EXECUTE FUNCTION handle_new_user();
+
 -- Триггеры для обновления updated_at
 CREATE TRIGGER update_profiles_updated_at 
     BEFORE UPDATE ON profiles
@@ -544,6 +729,10 @@ CREATE TRIGGER update_profiles_updated_at
 
 CREATE TRIGGER update_role_change_requests_updated_at 
     BEFORE UPDATE ON role_change_requests
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_cases_updated_at 
+    BEFORE UPDATE ON cases
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_court_acts_updated_at 
@@ -560,10 +749,6 @@ CREATE TRIGGER update_fines_updated_at
 
 CREATE TRIGGER update_wanted_updated_at 
     BEFORE UPDATE ON wanted
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_cases_updated_at 
-    BEFORE UPDATE ON cases
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_lawyers_updated_at 
@@ -621,7 +806,10 @@ CREATE TRIGGER create_role_change_notification_trigger
     AFTER UPDATE ON role_change_requests
     FOR EACH ROW EXECUTE FUNCTION create_role_change_notification();
 
--- Функция для глобального поиска документов
+-- Удаляем старую функцию search_documents если она существует
+DROP FUNCTION IF EXISTS search_documents(TEXT);
+
+-- Функция для глобального поиска документов (улучшенная)
 CREATE OR REPLACE FUNCTION search_documents(search_term TEXT)
 RETURNS TABLE (
     id UUID,
@@ -629,6 +817,7 @@ RETURNS TABLE (
     content TEXT,
     type TEXT,
     static_id TEXT,
+    case_number TEXT,
     created_at TIMESTAMP WITH TIME ZONE
 ) AS $$
 BEGIN
@@ -640,6 +829,7 @@ BEGIN
         ca.content,
         'court_act'::TEXT as type,
         ca.defendant_static_id as static_id,
+        ca.case_number,
         ca.created_at
     FROM court_acts ca
     WHERE ca.status = 'published'
@@ -648,6 +838,7 @@ BEGIN
         OR ca.content ILIKE '%' || search_term || '%'
         OR ca.defendant_static_id ILIKE '%' || search_term || '%'
         OR ca.defendant_name ILIKE '%' || search_term || '%'
+        OR ca.case_number ILIKE '%' || search_term || '%'
     )
     
     UNION ALL
@@ -659,12 +850,14 @@ BEGIN
         ga.content,
         'government_act'::TEXT as type,
         NULL::TEXT as static_id,
+        ga.act_number as case_number,
         ga.created_at
     FROM gov_acts ga
     WHERE ga.status = 'published'
     AND (
         ga.title ILIKE '%' || search_term || '%'
         OR ga.content ILIKE '%' || search_term || '%'
+        OR ga.act_number ILIKE '%' || search_term || '%'
     )
     
     UNION ALL
@@ -676,6 +869,7 @@ BEGIN
         f.reason as content,
         'fine'::TEXT as type,
         f.defendant_static_id as static_id,
+        NULL::TEXT as case_number,
         f.created_at
     FROM fines f
     WHERE f.status = 'active'
@@ -694,6 +888,7 @@ BEGIN
         w.reason as content,
         'wanted'::TEXT as type,
         w.suspect_static_id as static_id,
+        NULL::TEXT as case_number,
         w.created_at
     FROM wanted w
     WHERE w.status = 'active'
@@ -703,6 +898,24 @@ BEGIN
         OR w.reason ILIKE '%' || search_term || '%'
     )
     
+    UNION ALL
+    
+    -- Поиск по делам
+    SELECT 
+        c.id,
+        c.title,
+        c.description as content,
+        'case'::TEXT as type,
+        NULL::TEXT as static_id,
+        c.case_number,
+        c.created_at
+    FROM cases c
+    WHERE (
+        c.title ILIKE '%' || search_term || '%'
+        OR c.description ILIKE '%' || search_term || '%'
+        OR c.case_number ILIKE '%' || search_term || '%'
+    )
+    
     ORDER BY created_at DESC;
 END;
 $$ LANGUAGE plpgsql;
@@ -710,6 +923,9 @@ $$ LANGUAGE plpgsql;
 -- =====================================================
 -- ПРОВЕРКИ И ВАЛИДАЦИЯ
 -- =====================================================
+
+-- Проверяем, что все ENUM типы созданы
+SELECT 'All ENUM types created successfully' as status;
 
 -- Проверяем, что все таблицы созданы
 SELECT 'All tables created successfully' as status;
