@@ -138,11 +138,15 @@ export type AppointmentStatus =
 
 export type Appointment = {
   id: string;
+  user_id: string;                 // id пользователя, который записался
   created_by: string;              // id из auth.users
   department: Department;
-  subject: string;
-  preferred_datetime: string | null; // ISO или null
+  position: string;                 // тема/должность
   status: AppointmentStatus;
+  reason?: string;                  // подробности
+  preferred_datetime: string | null; // ISO или null
+  reviewed_by?: string;             // id того, кто рассмотрел
+  reviewed_at?: string;             // когда рассмотрели
   created_at?: string;
   updated_at?: string;
 };
@@ -212,6 +216,80 @@ export const AppointmentStatusLabel: Record<AppointmentStatus, string> = {
 };
 export type { Session, AuthChangeEvent } from "@supabase/supabase-js";
 
+// Дополнительные типы для таблиц, которые используются в проекте
+export type Inspection = {
+  id: string;
+  created_by: string;
+  target_id: string;
+  target_name: string;
+  inspection_type: string;
+  description: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Case = {
+  id: string;
+  case_number: string;
+  title: string;
+  description: string;
+  status: string;
+  created_by: string;
+  assigned_to?: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CaseEvent = {
+  id: string;
+  case_id: string;
+  event_type: string;
+  description: string;
+  created_by: string;
+  created_at: string;
+};
+
+export type CourtSession = {
+  id: string;
+  session_date: string;
+  title: string;
+  description: string;
+  status: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Lawyer = {
+  id: string;
+  user_id: string;
+  license_number: string;
+  specialization: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type LawyerRequest = {
+  id: string;
+  user_id: string;
+  request_type: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type LawyerContract = {
+  id: string;
+  lawyer_id: string;
+  client_id: string;
+  case_id: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+};
+
 
 export type FineStatus = "UNPAID" | "PAID" | "CANCELLED";
 
@@ -236,38 +314,37 @@ export const FineStatusLabel: Record<FineStatus, string> = {
   CANCELLED: "Отменён",
 };
 
-export type WarrantType = "ARREST" | "SEARCH" | "SEIZURE" | "DETENTION";
-export type WarrantStatus = "ACTIVE" | "EXECUTED" | "REVOKED" | "EXPIRED";
+export type WarrantType = "AS" | "S" | "A";
+export type WarrantStatus = "active" | "executed" | "expired" | "cancelled";
 
 export type Warrant = {
   id: string;
-  created_by: string;
-  subject_id?: string | null;
-  subject_static_id: string;
-  subject_name: string;
-  issuer_faction: Faction;
+  warrant_number: string;
+  target_name: string;
   warrant_type: WarrantType;
-  description: string;
+  reason: string;
+  articles: string[];
+  issued_by: string;
+  issuer_name?: string; // Добавляем поле для имени издателя
   status: WarrantStatus;
-  issued_at?: string;
-  executed_at?: string | null;
-  revoked_at?: string | null;
-  expires_at?: string | null;
-  updated_at?: string;
+  valid_until: string;
+  source_url?: string;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
 };
 
 export const WarrantTypeLabel: Record<WarrantType, string> = {
-  ARREST: "Ордер на арест",
-  SEARCH: "Ордер на обыск",
-  SEIZURE: "Ордер на изъятие",
-  DETENTION: "Ордер на задержание",
+  AS: "Arrest & Search",
+  S: "Search",
+  A: "Arrest",
 };
 
 export const WarrantStatusLabel: Record<WarrantStatus, string> = {
-  ACTIVE: "Активен",
-  EXECUTED: "Исполнен",
-  REVOKED: "Отозван",
-  EXPIRED: "Истёк",
+  active: "Активен",
+  executed: "Исполнен",
+  expired: "Истек",
+  cancelled: "Отменен",
 };
 
 /** Запросы на изменение ролей */

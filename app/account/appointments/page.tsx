@@ -59,7 +59,7 @@ export default function MyAppointmentsPage() {
             {rows.map((r) => (
               <tr key={r.id} className="border-t">
                 <td className="py-2 pl-4">{DepartmentLabel[r.department]}</td>
-                <td className="py-2">{r.subject}</td>
+                <td className="py-2">{r.position}</td>
                 <td className="py-2">{r.preferred_datetime ? new Date(r.preferred_datetime).toLocaleString() : "—"}</td>
                 <td className="py-2"><StatusBadge s={r.status} /></td>
                 <td className="py-2 pr-4 text-right">{r.created_at ? new Date(r.created_at).toLocaleString() : ""}</td>

@@ -6,7 +6,7 @@ import type { Department } from "../../lib/supabase/client";
 import { DepartmentLabel } from "../../lib/supabase/client";
 
 const departments: Department[] = [
-  "MIN_FINANCE","GOVERNOR","VICE_GOVERNOR","MIN_JUSTICE","BAR","GOV_STAFF","MIN_DEFENSE","MIN_SECURITY","MIN_HEALTH",
+  "MIN_FINANCE","GOVERNOR","VICE_GOVERNOR","MIN_JUSTICE","BAR_ASSOCIATION","GOV_STAFF","MIN_DEFENSE","MIN_SECURITY","MIN_HEALTH",
 ];
 
 const toIso = (v: string): string | null => (v ? new Date(v).toISOString() : null);
@@ -25,10 +25,11 @@ export default function AppointmentPage() {
     if (!user) { setInfo("Нужно войти."); return; }
 
     const { error } = await supabase.from("appointments").insert({
+      user_id: user.id,
       created_by: user.id,
       department,
-      subject: subject.trim(),
-      details: details.trim() || null,
+      position: subject.trim(),
+      reason: details.trim() || null,
       preferred_datetime: toIso(when),
     });
 

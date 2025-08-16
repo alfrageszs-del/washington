@@ -2,28 +2,8 @@
 // ТИПЫ ДЛЯ СИСТЕМЫ ЗАПРОСОВ НА ИЗМЕНЕНИЕ РОЛЕЙ
 // =====================================================
 
-/** Типы запросов на изменение ролей */
-export type RoleChangeRequestType = "FACTION" | "GOV_ROLE" | "LEADER_ROLE" | "OFFICE_ROLE";
-
-/** Статусы запросов на изменение ролей */
-export type RoleChangeRequestStatus = "PENDING" | "APPROVED" | "REJECTED";
-
-/** Основной тип запроса на изменение роли */
-export type RoleChangeRequest = {
-  id: string;
-  user_id: string;                    // пользователь, для которого запрашивается изменение
-  requested_by: string;               // пользователь, который создал запрос
-  request_type: RoleChangeRequestType;
-  current_value: string | null;       // текущее значение роли
-  requested_value: string;            // запрашиваемое значение роли
-  reason: string;                     // причина запроса
-  status: RoleChangeRequestStatus;
-  reviewed_by?: string | null;        // администратор, который рассмотрел запрос
-  review_comment?: string | null;     // комментарий администратора
-  reviewed_at?: string | null;        // время рассмотрения
-  created_at?: string;
-  updated_at?: string;
-};
+// Импортируем типы из supabase/client.ts
+export type { RoleChangeRequestType, RoleChangeRequestStatus, RoleChangeRequest } from "../lib/supabase/client";
 
 /** Лейблы для типов запросов */
 export const RoleChangeRequestTypeLabel: Record<RoleChangeRequestType, string> = {
@@ -96,16 +76,8 @@ export const DepartmentLabel: Record<string, string> = {
 // ВСПОМОГАТЕЛЬНЫЕ ТИПЫ (если нужны)
 // =====================================================
 
-/** Профиль пользователя (минимальный набор полей) */
-export type Profile = {
-  id: string;
-  nickname: string;
-  static_id: string;
-  faction: string;
-  gov_role: string;
-  leader_role?: string | null;
-  office_role?: string | null;
-};
+// Импортируем Profile из supabase/client.ts
+export type { Profile } from "../lib/supabase/client";
 
 /** Пропсы для компонента формы запроса */
 export type RoleChangeRequestFormProps = {

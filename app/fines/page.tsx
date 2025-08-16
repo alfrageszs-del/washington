@@ -2,31 +2,30 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase/client";
-import type { Profile, Warrant, WarrantType } from "../../lib/supabase/client";
+import type { Profile, Fine, FineStatus } from "../../lib/supabase/client";
 
-export default function WarrantsPage() {
-  const [warrants, setWarrants] = useState<Warrant[]>([]);
+export default function FinesPage() {
+  const [fines, setFines] = useState<Fine[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [user, setUser] = useState<Profile | null>(null);
   const [canCreate, setCanCreate] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createForm, setCreateForm] = useState({
-    warrant_number: "",
-    target_name: "",
-    warrant_type: "AS",
+    offender_static_id: "",
+    offender_name: "",
+    issuer_faction: "LSPD" as const,
+    amount: "",
     reason: "",
-    articles: [""],
-    valid_until: "",
     source_url: "",
     notes: ""
   });
 
   useEffect(() => {
-    loadUserAndWarrants();
+    loadUserAndFines();
   }, []);
 
-  const loadUserAndWarrants = async () => {
+  const loadUserAndFines = async () => {
     try {
       // Загружаем пользователя
       const { data: { session } } = await supabase.auth.getSession();
@@ -43,30 +42,29 @@ export default function WarrantsPage() {
             profile.gov_role === "TECH_ADMIN" || 
             profile.gov_role === "ATTORNEY_GENERAL" || 
             profile.gov_role === "CHIEF_JUSTICE" ||
-            profile.faction === "LSPD" ||
-            profile.faction === "LSCSD" ||
-            profile.faction === "FIB"
+            profile.gov_role === "PROSECUTOR" ||
+            profile.gov_role === "JUDGE"
           );
         }
       }
 
-      // Загружаем ордера с информацией об авторе
-      const { data: warrantsData, error: warrantsError } = await supabase
-        .from("warrants")
+      // Загружаем штрафы с информацией об авторе
+      const { data: finesData, error: finesError } = await supabase
+        .from("fines")
         .select(`
           *,
-          issuer:profiles!warrants_issued_by_fkey(full_name)
+          issuer:profiles!fines_created_by_fkey(full_name)
         `)
         .order("created_at", { ascending: false });
 
-      if (warrantsError) {
-        setError(`Ошибка загрузки ордеров: ${warrantsError.message}`);
+      if (finesError) {
+        setError(`Ошибка загрузки штрафов: ${finesError.message}`);
       } else {
-        const formattedWarrants = warrantsData?.map(warrant => ({
-          ...warrant,
-          issuer_name: warrant.issuer?.full_name || "Неизвестно"
+        const formattedFines = finesData?.map(fine => ({
+          ...fine,
+          issuer_name: fine.issuer?.full_name || "Неизвестно"
         })) || [];
-        setWarrants(formattedWarrants);
+        setFines(formattedFines);
       }
     } catch (err) {
       setError(`Ошибка: ${err instanceof Error ? err.message : "Неизвестная ошибка"}`);
@@ -75,57 +73,52 @@ export default function WarrantsPage() {
     }
   };
 
-  const handleCreateWarrant = async () => {
+  const handleCreateFine = async () => {
     if (!user) return;
 
     try {
-      // Фильтруем пустые статьи
-      const filteredArticles = createForm.articles.filter(article => article.trim() !== "");
-
       const { error } = await supabase
-        .from("warrants")
+        .from("fines")
         .insert({
-          warrant_number: createForm.warrant_number,
-          target_name: createForm.target_name,
-          warrant_type: createForm.warrant_type,
+          offender_static_id: createForm.offender_static_id,
+          offender_name: createForm.offender_name,
+          issuer_faction: createForm.issuer_faction,
+          amount: parseInt(createForm.amount),
           reason: createForm.reason,
-          articles: filteredArticles,
-          valid_until: createForm.valid_until,
           source_url: createForm.source_url || null,
           notes: createForm.notes || null,
-          issued_by: user.id
+          created_by: user.id
         });
 
       if (error) {
-        setError(`Ошибка создания ордера: ${error.message}`);
+        setError(`Ошибка создания штрафа: ${error.message}`);
         return;
       }
 
       // Закрываем форму и перезагружаем
       setShowCreateForm(false);
       setCreateForm({ 
-        warrant_number: "", 
-        target_name: "", 
-        warrant_type: "AS", 
+        offender_static_id: "", 
+        offender_name: "", 
+        issuer_faction: "LSPD", 
+        amount: "", 
         reason: "", 
-        articles: [""], 
-        valid_until: "", 
         source_url: "", 
         notes: "" 
       });
-      await loadUserAndWarrants();
+      await loadUserAndFines();
       setError(""); // Очищаем ошибки
     } catch (err) {
       setError(`Ошибка: ${err instanceof Error ? err.message : "Неизвестная ошибка"}`);
     }
   };
 
-  const handleDeleteWarrant = async (id: string) => {
-    if (!confirm("Удалить этот ордер? Это действие необратимо.")) return;
+  const handleDeleteFine = async (id: string) => {
+    if (!confirm("Удалить этот штраф? Это действие необратимо.")) return;
 
     try {
       const { error } = await supabase
-        .from("warrants")
+        .from("fines")
         .delete()
         .eq("id", id);
 
@@ -134,60 +127,64 @@ export default function WarrantsPage() {
         return;
       }
 
-      await loadUserAndWarrants();
+      await loadUserAndFines();
       setError(""); // Очищаем ошибки
     } catch (err) {
       setError(`Ошибка: ${err instanceof Error ? err.message : "Неизвестная ошибка"}`);
     }
   };
 
-  const addArticle = () => {
-    setCreateForm(prev => ({
-      ...prev,
-      articles: [...prev.articles, ""]
-    }));
-  };
+  const handleStatusChange = async (id: string, newStatus: FineStatus) => {
+    try {
+      const updateData: any = { status: newStatus };
+      if (newStatus === "PAID") {
+        updateData.paid_at = new Date().toISOString();
+      }
 
-  const removeArticle = (index: number) => {
-    setCreateForm(prev => ({
-      ...prev,
-      articles: prev.articles.filter((_, i) => i !== index)
-    }));
-  };
+      const { error } = await supabase
+        .from("fines")
+        .update(updateData)
+        .eq("id", id);
 
-  const updateArticle = (index: number, value: string) => {
-    setCreateForm(prev => ({
-      ...prev,
-      articles: prev.articles.map((article, i) => i === index ? value : article)
-    }));
-  };
+      if (error) {
+        setError(`Ошибка обновления: ${error.message}`);
+        return;
+      }
 
-  const getWarrantTypeText = (type: string) => {
-    switch (type) {
-      case 'AS': return 'Arrest & Search';
-      case 'S': return 'Search';
-      case 'A': return 'Arrest';
-      default: return type;
+      await loadUserAndFines();
+      setError(""); // Очищаем ошибки
+    } catch (err) {
+      setError(`Ошибка: ${err instanceof Error ? err.message : "Неизвестная ошибка"}`);
     }
   };
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: FineStatus) => {
     switch (status) {
-      case 'active': return 'bg-green-100 text-green-800';
-      case 'executed': return 'bg-blue-100 text-blue-800';
-      case 'expired': return 'bg-red-100 text-red-800';
-      case 'cancelled': return 'bg-gray-100 text-gray-800';
+      case 'UNPAID': return 'bg-red-100 text-red-800';
+      case 'PAID': return 'bg-green-100 text-green-800';
+      case 'CANCELLED': return 'bg-gray-100 text-gray-800';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
 
-  const getStatusText = (status: string) => {
+  const getStatusText = (status: FineStatus) => {
     switch (status) {
-      case 'active': return 'Активен';
-      case 'executed': return 'Исполнен';
-      case 'expired': return 'Истек';
-      case 'cancelled': return 'Отменен';
+      case 'UNPAID': return 'Не оплачен';
+      case 'PAID': return 'Оплачен';
+      case 'CANCELLED': return 'Отменен';
       default: return status;
+    }
+  };
+
+  const getFactionText = (faction: string) => {
+    switch (faction) {
+      case 'LSPD': return 'LSPD';
+      case 'LSCSD': return 'LSCSD';
+      case 'FIB': return 'FIB';
+      case 'EMS': return 'EMS';
+      case 'SANG': return 'SANG';
+      case 'WN': return 'WN';
+      default: return faction;
     }
   };
 
@@ -209,9 +206,9 @@ export default function WarrantsPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-6">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Ордера</h1>
+              <h1 className="text-3xl font-bold text-gray-900">Штрафы</h1>
               <p className="mt-2 text-sm text-gray-600">
-                Реестр всех ордеров на арест и обыск
+                Реестр всех штрафов и взысканий
               </p>
             </div>
             {canCreate && (
@@ -222,7 +219,7 @@ export default function WarrantsPage() {
                 <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
-                Создать ордер
+                Создать штраф
               </button>
             )}
           </div>
@@ -247,30 +244,30 @@ export default function WarrantsPage() {
           </div>
         )}
 
-        {/* Список ордеров */}
-        {warrants.length === 0 ? (
+        {/* Список штрафов */}
+        {fines.length === 0 ? (
           <div className="text-center py-12">
             <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <h3 className="mt-2 text-sm font-medium text-gray-900">Нет ордеров</h3>
+            <h3 className="mt-2 text-sm font-medium text-gray-900">Нет штрафов</h3>
             <p className="mt-1 text-sm text-gray-500">
-              Пока не создано ни одного ордера.
+              Пока не создано ни одного штрафа.
             </p>
           </div>
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {warrants.map((warrant) => (
-              <div key={warrant.id} className="bg-white overflow-hidden shadow rounded-lg">
+            {fines.map((fine) => (
+              <div key={fine.id} className="bg-white overflow-hidden shadow rounded-lg">
                 <div className="p-6">
                   <div className="flex items-center justify-between mb-4">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(warrant.status)}`}>
-                      {getStatusText(warrant.status)}
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(fine.status)}`}>
+                      {getStatusText(fine.status)}
                     </span>
-                    {user && (user.gov_role === "TECH_ADMIN" || warrant.issued_by === user.id) && (
+                    {user && (user.gov_role === "TECH_ADMIN" || fine.created_by === user.id) && (
                       <div className="flex space-x-2">
                         <button
-                          onClick={() => handleDeleteWarrant(warrant.id)}
+                          onClick={() => handleDeleteFine(fine.id)}
                           className="text-red-600 hover:text-red-800"
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -282,52 +279,63 @@ export default function WarrantsPage() {
                   </div>
                   
                   <div className="mb-3">
-                    <span className="text-sm font-mono text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                      {warrant.warrant_number}
-                    </span>
-                  </div>
-                  
-                  <div className="mb-3">
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                      {getWarrantTypeText(warrant.warrant_type)}
+                      {getFactionText(fine.issuer_faction)}
                     </span>
                   </div>
                   
                   <h3 className="text-lg font-medium text-gray-900 mb-2">
-                    Цель: {warrant.target_name}
+                    {fine.offender_name}
                   </h3>
                   
                   <p className="text-sm text-gray-600 mb-4">
-                    {warrant.reason}
+                    {fine.reason}
                   </p>
-                  
-                  {warrant.articles.length > 0 && (
-                    <div className="mb-4">
-                      <h4 className="text-sm font-medium text-gray-700 mb-2">Статьи:</h4>
-                      <div className="flex flex-wrap gap-1">
-                        {warrant.articles.map((article, index) => (
-                          <span key={index} className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
-                            {article}
-                          </span>
-                        ))}
-                      </div>
+
+                  <div className="mb-4">
+                    <div className="text-2xl font-bold text-red-600">
+                      ${fine.amount.toLocaleString()}
                     </div>
-                  )}
+                  </div>
                   
                   <div className="border-t pt-4 space-y-2">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-500">Выдан:</span>
-                      <span className="text-gray-900 font-medium">{warrant.issuer_name}</span>
+                      <span className="text-gray-500">ID нарушителя:</span>
+                      <span className="text-gray-900 font-mono">{fine.offender_static_id}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-500">Действителен до:</span>
-                      <span className="text-gray-900 font-medium">{new Date(warrant.valid_until).toLocaleDateString("ru-RU")}</span>
+                      <span className="text-gray-500">Выдан:</span>
+                      <span className="text-gray-900 font-medium">{fine.issuer_name}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm text-gray-500">
                       <span>Дата создания:</span>
-                      <span>{new Date(warrant.created_at).toLocaleDateString("ru-RU")}</span>
+                      <span>{new Date(fine.created_at).toLocaleDateString("ru-RU")}</span>
                     </div>
+                    {fine.paid_at && (
+                      <div className="flex items-center justify-between text-sm text-gray-500">
+                        <span>Оплачен:</span>
+                        <span>{new Date(fine.paid_at).toLocaleDateString("ru-RU")}</span>
+                      </div>
+                    )}
                   </div>
+
+                  {/* Кнопки управления статусом */}
+                  {user && (user.gov_role === "TECH_ADMIN" || fine.created_by === user.id) && fine.status === "UNPAID" && (
+                    <div className="mt-4 flex space-x-2">
+                      <button
+                        onClick={() => handleStatusChange(fine.id, "PAID")}
+                        className="flex-1 px-3 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+                      >
+                        Отметить как оплаченный
+                      </button>
+                      <button
+                        onClick={() => handleStatusChange(fine.id, "CANCELLED")}
+                        className="px-3 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                      >
+                        Отменить
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -335,13 +343,13 @@ export default function WarrantsPage() {
         )}
       </div>
 
-      {/* Модальное окно создания ордера */}
+      {/* Модальное окно создания штрафа */}
       {showCreateForm && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
           <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
             <div className="mt-3">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-medium text-gray-900">Создать новый ордер</h3>
+                <h3 className="text-lg font-medium text-gray-900">Создать новый штраф</h3>
                 <button
                   onClick={() => setShowCreateForm(false)}
                   className="text-gray-400 hover:text-gray-600"
@@ -352,49 +360,67 @@ export default function WarrantsPage() {
                 </button>
               </div>
               
-              <form onSubmit={(e) => { e.preventDefault(); handleCreateWarrant(); }}>
+              <form onSubmit={(e) => { e.preventDefault(); handleCreateFine(); }}>
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Номер ордера *
+                      ID нарушителя *
                     </label>
                     <input
                       type="text"
                       required
-                      value={createForm.warrant_number}
-                      onChange={(e) => setCreateForm({...createForm, warrant_number: e.target.value})}
+                      value={createForm.offender_static_id}
+                      onChange={(e) => setCreateForm({...createForm, offender_static_id: e.target.value})}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                      placeholder="Ордер №123/2024"
+                      placeholder="ID123456"
                     />
                   </div>
                   
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Цель ордера *
+                      ФИО нарушителя *
                     </label>
                     <input
                       type="text"
                       required
-                      value={createForm.target_name}
-                      onChange={(e) => setCreateForm({...createForm, target_name: e.target.value})}
+                      value={createForm.offender_name}
+                      onChange={(e) => setCreateForm({...createForm, offender_name: e.target.value})}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                      placeholder="ФИО подозреваемого"
+                      placeholder="ФИО нарушителя"
                     />
                   </div>
                   
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Тип ордера *
+                      Выдающая фракция *
                     </label>
                     <select
-                      value={createForm.warrant_type}
-                      onChange={(e) => setCreateForm({...createForm, warrant_type: e.target.value})}
+                      value={createForm.issuer_faction}
+                      onChange={(e) => setCreateForm({...createForm, issuer_faction: e.target.value as any})}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
                     >
-                      <option value="AS">Arrest & Search (Арест и обыск)</option>
-                      <option value="S">Search (Обыск)</option>
-                      <option value="A">Arrest (Арест)</option>
+                      <option value="LSPD">LSPD</option>
+                      <option value="LSCSD">LSCSD</option>
+                      <option value="FIB">FIB</option>
+                      <option value="EMS">EMS</option>
+                      <option value="SANG">SANG</option>
+                      <option value="WN">WN</option>
                     </select>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Сумма штрафа *
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      value={createForm.amount}
+                      onChange={(e) => setCreateForm({...createForm, amount: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                      placeholder="1000"
+                    />
                   </div>
                   
                   <div>
@@ -407,56 +433,7 @@ export default function WarrantsPage() {
                       value={createForm.reason}
                       onChange={(e) => setCreateForm({...createForm, reason: e.target.value})}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                      placeholder="Описание основания для выдачи ордера"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Статьи *
-                    </label>
-                    {createForm.articles.map((article, index) => (
-                      <div key={index} className="flex gap-2 mb-2">
-                        <input
-                          type="text"
-                          required
-                          value={article}
-                          onChange={(e) => updateArticle(index, e.target.value)}
-                          className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                          placeholder="Статья УК"
-                        />
-                        {createForm.articles.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => removeArticle(index)}
-                            className="px-3 py-2 text-red-600 hover:text-red-800"
-                          >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={addArticle}
-                      className="text-sm text-red-600 hover:text-red-800"
-                    >
-                      + Добавить статью
-                    </button>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Действителен до *
-                    </label>
-                    <input
-                      type="datetime-local"
-                      required
-                      value={createForm.valid_until}
-                      onChange={(e) => setCreateForm({...createForm, valid_until: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                      placeholder="Описание нарушения"
                     />
                   </div>
                   
@@ -497,10 +474,10 @@ export default function WarrantsPage() {
                   </button>
                   <button
                     type="submit"
-                    disabled={!createForm.warrant_number || !createForm.target_name || !createForm.reason || !createForm.valid_until || createForm.articles.some(a => !a.trim())}
+                    disabled={!createForm.offender_static_id || !createForm.offender_name || !createForm.reason || !createForm.amount}
                     className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
                   >
-                    Создать ордер
+                    Создать штраф
                   </button>
                 </div>
               </form>
