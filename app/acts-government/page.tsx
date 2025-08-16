@@ -61,7 +61,7 @@ export default function GovActsPage() {
         .from("gov_acts")
         .select(`
           *,
-          author:profiles!gov_acts_author_id_fkey(full_name)
+          author:profiles!gov_acts_author_id_fkey(nickname, static_id)
         `)
         .eq("status", "published")
         .order("created_at", { ascending: false });
@@ -71,7 +71,7 @@ export default function GovActsPage() {
       } else {
         const formattedActs = actsData?.map(act => ({
           ...act,
-          author_name: act.author?.full_name || "Неизвестно"
+          author_name: act.author?.nickname || "Неизвестно"
         })) || [];
         setActs(formattedActs);
       }

@@ -12,6 +12,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- Создаем enum для ролей
 DO $$ BEGIN
     CREATE TYPE gov_role_enum AS ENUM (
+        'NONE',           -- Без роли
         'PROSECUTOR',      -- Прокурор
         'JUDGE',          -- Судья
         'TECH_ADMIN',     -- Технический администратор
@@ -25,6 +26,7 @@ END $$;
 -- Создаем enum для фракций
 DO $$ BEGIN
     CREATE TYPE faction_enum AS ENUM (
+        'CIVILIAN',       -- Гражданский
         'LSPD',           -- Полиция
         'LSCSD',          -- Шериф
         'FIB',            -- ФБР
@@ -41,9 +43,10 @@ END $$;
 CREATE TABLE IF NOT EXISTS profiles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email TEXT UNIQUE NOT NULL,
-    full_name TEXT NOT NULL,
-    gov_role gov_role_enum NOT NULL DEFAULT 'PROSECUTOR',
-    faction faction_enum NOT NULL DEFAULT 'LSPD',
+    nickname TEXT NOT NULL,
+    static_id TEXT NOT NULL,
+    gov_role gov_role_enum NOT NULL DEFAULT 'NONE',
+    faction faction_enum NOT NULL DEFAULT 'CIVILIAN',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -598,6 +601,7 @@ CREATE POLICY "Admins can update role change requests" ON role_change_requests F
 GRANT USAGE ON SCHEMA public TO authenticated;
 GRANT ALL ON ALL TABLES IN SCHEMA public TO authenticated;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO authenticated;
+GRANT EXECUTE ON FUNCTION public.handle_new_user() TO authenticated;
 
 -- =====================================================
 -- АВТОМАТИЧЕСКОЕ СОЗДАНИЕ ПРОФИЛЕЙ ПРИ РЕГИСТРАЦИИ
@@ -607,14 +611,18 @@ GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO authenticated;
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-    INSERT INTO public.profiles (id, nickname, static_id, gov_role, faction)
-    VALUES (
-        NEW.id,
-        COALESCE(NEW.raw_user_meta_data->>'nickname', 'Новый пользователь'),
-        COALESCE(NEW.raw_user_meta_data->>'static_id', 'N/A'),
-        'NONE',
-        'CIVILIAN'
-    );
+    -- Проверяем, что профиль еще не существует
+    IF NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = NEW.id) THEN
+        INSERT INTO public.profiles (id, email, nickname, static_id, gov_role, faction)
+        VALUES (
+            NEW.id,
+            NEW.email,
+            COALESCE(NEW.raw_user_meta_data->>'nickname', 'Новый пользователь'),
+            COALESCE(NEW.raw_user_meta_data->>'static_id', 'N/A'),
+            'NONE',
+            'CIVILIAN'
+        );
+    END IF;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -630,11 +638,12 @@ CREATE TRIGGER on_auth_user_created
 -- =====================================================
 
 -- Вставляем тестового администратора
-INSERT INTO profiles (id, email, full_name, gov_role, faction) 
+INSERT INTO profiles (id, email, nickname, static_id, gov_role, faction) 
 VALUES (
     gen_random_uuid(),
     'admin@example.com',
     'Технический администратор',
+    'ADMIN001',
     'TECH_ADMIN',
     'GOV'
 ) ON CONFLICT (email) DO NOTHING;
