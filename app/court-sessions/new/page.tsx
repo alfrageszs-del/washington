@@ -36,7 +36,7 @@ export default function NewCourtSessionPage() {
     }
   };
 
-  const canCreateSession = () => {
+  const canCreateSession = () => {
     if (!userProfile) return false;
     // Align with RLS: TECH_ADMIN, ATTORNEY_GENERAL, CHIEF_JUSTICE
     return ["TECH_ADMIN", "ATTORNEY_GENERAL", "CHIEF_JUSTICE"].includes(userProfile.gov_role);
