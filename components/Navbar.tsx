@@ -3,13 +3,19 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import Logo from "./Logo";
+import NotificationBadge from "../app/components/NotificationBadge";
 
 const links: { href: string; label: string }[] = [
   { href: "/",               label: "Главная" },
+  { href: "/search",         label: "Поиск" },
   { href: "/acts-government",label: "Акты правительства" },
   { href: "/acts-court",     label: "Акты суда" },
   { href: "/fines",          label: "Штрафы" },
   { href: "/wanted",         label: "Ордера" },
+  { href: "/cases",          label: "Дела" },
+  { href: "/court-sessions", label: "Заседания" },
+  { href: "/lawyers",        label: "Адвокаты" },
+  { href: "/inspections",    label: "Проверки" },
   { href: "/structures",     label: "Госструктуры" },
   { href: "/appointment",    label: "Запись" },
 ];
@@ -43,6 +49,7 @@ export default function Navbar() {
 
           {/* действия справа */}
           <div className="hidden md:flex items-center gap-2">
+            <NotificationBadge />
             <button
               type="button"
               onClick={() => (typeof window !== "undefined" ? window.history.back() : null)}
@@ -69,6 +76,7 @@ export default function Navbar() {
             })}
           </div>
           <div className="flex items-center gap-2 pl-1">
+            <NotificationBadge />
             <button
               type="button"
               onClick={() => (typeof window !== "undefined" ? window.history.back() : null)}

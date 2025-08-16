@@ -17,6 +17,8 @@ const roleRu: Record<Profile["gov_role"], string> = {
   PROSECUTOR: "Прокурор",
   JUDGE: "Судья",
   TECH_ADMIN: "Тех. администратор",
+  ATTORNEY_GENERAL: "Генеральный прокурор",
+  CHIEF_JUSTICE: "Председатель Верховного суда",
 };
 const statusBaseRu = (s: VerificationStatus | "NONE") =>
   s === "PENDING"
@@ -36,7 +38,7 @@ const factions: Faction[] = [
   "WN",
   "SANG",
   "GOV",
-  "JUDICIAL",
+  "COURT",
 ];
 
 /* ===== Утилиты ===== */
@@ -120,7 +122,7 @@ export default function AccountPage() {
   );
   const canAskJudge = useMemo(
     () =>
-      faction === "JUDICIAL" &&
+      faction === "COURT" &&
       (govRole !== "JUDGE" || !isVerified) &&
       judReq.status !== "PENDING" &&
       !judCooldownActive,
@@ -460,6 +462,42 @@ export default function AccountPage() {
               </div>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Быстрые действия */}
+      <div className="rounded-2xl border bg-white p-5 shadow-sm">
+        <h2 className="mb-4 text-lg font-semibold">Быстрые действия</h2>
+        <div className="grid gap-3 md:grid-cols-2">
+          <a
+            href="/notifications"
+            className="flex items-center justify-between rounded-lg border p-3 hover:bg-gray-50 transition-colors"
+          >
+            <div>
+              <div className="font-medium">Уведомления</div>
+              <div className="text-sm text-gray-600">Просмотр новых уведомлений</div>
+            </div>
+            <div className="text-blue-600">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
+          </a>
+          
+          <a
+            href="/search"
+            className="flex items-center justify-between rounded-lg border p-3 hover:bg-gray-50 transition-colors"
+          >
+            <div>
+              <div className="font-medium">Поиск документов</div>
+              <div className="text-sm text-gray-600">Поиск по StaticID или nickname</div>
+            </div>
+            <div className="text-blue-600">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
+          </a>
         </div>
       </div>
 
