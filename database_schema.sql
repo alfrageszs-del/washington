@@ -523,7 +523,7 @@ COMMENT ON TABLE role_change_requests IS 'Запросы на изменение
 COMMENT ON TABLE gov_acts IS 'Государственные акты и постановления';
 COMMENT ON TABLE court_acts IS 'Судебные акты и решения';
 COMMENT ON TABLE warrants IS 'Ордера на арест, обыск и изъятие';
-COMMENT ON TABLE cases IS 'Судебные дела';
+COMMENT ON TABLE cases IS 'Дела';
 COMMENT ON TABLE case_events IS 'События по делам';
 COMMENT ON TABLE court_sessions IS 'Судебные сессии';
 COMMENT ON TABLE lawyers IS 'Адвокаты';

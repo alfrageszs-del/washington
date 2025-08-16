@@ -8,7 +8,7 @@ type CourtAct = {
   id: string;
   title: string;
   content: string;
-  judge_id: string;
+  created_by: string;
   judge_name: string;
   status: string;
   source_url?: string;
@@ -26,7 +26,7 @@ export default function CourtActsPage() {
   const [createForm, setCreateForm] = useState({
     title: "",
     content: "",
-    status: "draft" as const,
+    status: "DRAFT" as const,
     source_url: ""
   });
 
@@ -60,9 +60,9 @@ export default function CourtActsPage() {
         .from("court_acts")
         .select(`
           *,
-          judge:profiles(nickname, static_id)
+          judge:profiles!court_acts_created_by_fkey(nickname, static_id)
         `)
-        .eq("status", "published")
+        .eq("status", "PUBLISHED")
         .order("created_at", { ascending: false });
 
       if (actsError) {
@@ -92,7 +92,7 @@ export default function CourtActsPage() {
           content: createForm.content,
           status: createForm.status,
           source_url: createForm.source_url || null,
-          judge_id: user.id
+          created_by: user.id
         });
 
       if (error) {
@@ -102,7 +102,7 @@ export default function CourtActsPage() {
 
       // Закрываем форму и перезагружаем
       setShowCreateForm(false);
-      setCreateForm({ title: "", content: "", status: "draft", source_url: "" });
+      setCreateForm({ title: "", content: "", status: "DRAFT", source_url: "" });
       await loadUserAndActs();
       setError(""); // Очищаем ошибки
     } catch (err) {
@@ -205,11 +205,11 @@ export default function CourtActsPage() {
                 <div className="p-6">
                   <div className="flex items-center justify-between mb-4">
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      act.status === 'published' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                      act.status === 'PUBLISHED' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
                     }`}>
-                      {act.status === 'published' ? 'Опубликован' : 'Черновик'}
+                      {act.status === 'PUBLISHED' ? 'Опубликован' : 'Черновик'}
                     </span>
-                    {user && (user.gov_role === "TECH_ADMIN" || act.judge_id === user.id) && (
+                    {user && (user.gov_role === "TECH_ADMIN" || act.created_by === user.id) && (
                       <div className="flex space-x-2">
                         <button
                           onClick={() => handleDeleteAct(act.id)}
@@ -302,13 +302,13 @@ export default function CourtActsPage() {
                       Статус
                     </label>
                     <select
-                      value={createForm.status}
-                      onChange={(e) => setCreateForm({...createForm, status: e.target.value as any})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                    >
-                      <option value="draft">Черновик</option>
-                      <option value="published">Опубликован</option>
-                    </select>
+              value={createForm.status}
+              onChange={(e) => setCreateForm({...createForm, status: e.target.value as any})}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="DRAFT">Черновик</option>
+              <option value="PUBLISHED">Опубликован</option>
+            </select>
                   </div>
                   
                   <div>

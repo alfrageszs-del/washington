@@ -52,23 +52,16 @@ export default function NewCourtSessionPage() {
         .map(p => p.trim())
         .filter(p => p.length > 0);
 
-      const { data, error } = await supabase
+      const sessionDate = new Date(`${form.date}T${form.time || '00:00'}:00Z`).toISOString();
+      const { error } = await supabase
         .from("court_sessions")
         .insert({
           title: form.title,
-          case_number: form.case_number || null,
-          judge_id: userProfile.id,
-          judge_name: userProfile.nickname || userProfile.full_name || "Судья",
-          date: form.date,
-          time: form.time,
-          type: form.type,
-          status: "scheduled",
-          participants: participantsArray,
+          session_date: sessionDate,
           description: form.description || null,
-          courtroom: form.courtroom || null
-        })
-        .select()
-        .single();
+          status: "scheduled",
+          created_by: userProfile.id
+        });
 
       if (error) {
         console.error("Ошибка при создании заседания:", error);
