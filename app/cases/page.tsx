@@ -4,576 +4,377 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase/client";
 import type { Profile } from "../../lib/supabase/client";
 
-interface Case {
+type Case = {
   id: string;
-  title: string;
   case_number: string;
-  type: "criminal" | "civil" | "administrative";
-  status: "active" | "closed" | "pending";
-  start_date: string;
-  end_date?: string;
+  title: string;
+  description?: string;
+  prosecutor_id: string;
+  prosecutor_name: string;
   judge_id?: string;
-  prosecutor_id?: string;
-  lawyer_id?: string;
+  judge_name?: string;
+  status: string;
   created_at: string;
   updated_at: string;
-}
-
-interface CaseParticipant {
-  id: string;
-  case_id: string;
-  user_id?: string;
-  name: string;
-  role: string;
-  static_id?: string;
-  created_at: string;
-}
-
-interface CaseDocument {
-  id: string;
-  case_id: string;
-  document_type: string;
-  title: string;
-  content?: string;
-  file_url?: string;
-  created_at: string;
-}
-
-interface CaseEvent {
-  id: string;
-  case_id: string;
-  event: string;
-  description?: string;
-  document_id?: string;
-  created_at: string;
-}
+};
 
 export default function CasesPage() {
   const [cases, setCases] = useState<Case[]>([]);
-  const [selectedCase, setSelectedCase] = useState<Case | null>(null);
-  const [participants, setParticipants] = useState<CaseParticipant[]>([]);
-  const [documents, setDocuments] = useState<CaseDocument[]>([]);
-  const [events, setEvents] = useState<CaseEvent[]>([]);
-  const [profiles, setProfiles] = useState<Record<string, Profile>>({});
   const [loading, setLoading] = useState(true);
-  const [userProfile, setUserProfile] = useState<Profile | null>(null);
-  const [filter, setFilter] = useState<"all" | "active" | "closed" | "pending">("all");
-  const [searchTerm, setSearchTerm] = useState("");
+  const [error, setError] = useState("");
+  const [user, setUser] = useState<Profile | null>(null);
+  const [canCreate, setCanCreate] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createForm, setCreateForm] = useState({
-    title: "",
     case_number: "",
-    type: "criminal" as "criminal" | "civil" | "administrative",
-    description: ""
+    title: "",
+    description: "",
+    judge_id: ""
   });
 
   useEffect(() => {
-    loadUserProfile();
-    loadCases();
+    loadUserAndCases();
   }, []);
 
-  const loadUserProfile = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .single();
-      setUserProfile(profile);
-    }
-  };
-
-  const loadCases = async () => {
-    setLoading(true);
+  const loadUserAndCases = async () => {
     try {
-      const { data: casesData } = await supabase
-        .from("cases")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (casesData) {
-        setCases(casesData as Case[]);
+      // Загружаем пользователя
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", session.user.id)
+          .single();
         
-        // Загружаем профили для участников
-        const userIds = [...new Set([
-          ...casesData.map(c => c.judge_id).filter(Boolean),
-          ...casesData.map(c => c.prosecutor_id).filter(Boolean)
-        ])];
-
-        if (userIds.length > 0) {
-          const { data: profilesData } = await supabase
-            .from("profiles")
-            .select("*")
-            .in("id", userIds);
-
-          if (profilesData) {
-            const profilesMap: Record<string, Profile> = {};
-            profilesData.forEach((profile: Profile) => {
-              profilesMap[profile.id] = profile;
-            });
-            setProfiles(profilesMap);
-          }
+        if (profile) {
+          setUser(profile);
+          setCanCreate(
+            profile.gov_role === "PROSECUTOR" || 
+            profile.gov_role === "JUDGE" || 
+            profile.gov_role === "TECH_ADMIN" || 
+            profile.gov_role === "ATTORNEY_GENERAL" || 
+            profile.gov_role === "CHIEF_JUSTICE"
+          );
         }
       }
-    } catch (error) {
-      console.error("Ошибка при загрузке дел:", error);
+
+      // Загружаем дела с информацией об участниках
+      const { data: casesData, error: casesError } = await supabase
+        .from("cases")
+        .select(`
+          *,
+          prosecutor:profiles!cases_prosecutor_id_fkey(full_name),
+          judge:profiles!cases_judge_id_fkey(full_name)
+        `)
+        .order("created_at", { ascending: false });
+
+      if (casesError) {
+        setError(`Ошибка загрузки дел: ${casesError.message}`);
+      } else {
+        const formattedCases = casesData?.map(caseItem => ({
+          ...caseItem,
+          prosecutor_name: caseItem.prosecutor?.full_name || "Неизвестно",
+          judge_name: caseItem.judge?.full_name || "Не назначен"
+        })) || [];
+        setCases(formattedCases);
+      }
+    } catch (err) {
+      setError(`Ошибка: ${err instanceof Error ? err.message : "Неизвестная ошибка"}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const loadCaseDetails = async (caseId: string) => {
-    try {
-      // Загружаем участников
-      const { data: participantsData } = await supabase
-        .from("case_participants")
-        .select("*")
-        .eq("case_id", caseId);
-
-      if (participantsData) {
-        setParticipants(participantsData as CaseParticipant[]);
-      }
-
-      // Загружаем документы
-      const { data: documentsData } = await supabase
-        .from("case_documents")
-        .select("*")
-        .eq("case_id", caseId)
-        .order("created_at", { ascending: false });
-
-      if (documentsData) {
-        setDocuments(documentsData as CaseDocument[]);
-      }
-
-      // Загружаем события
-      const { data: eventsData } = await supabase
-        .from("case_events")
-        .select("*")
-        .eq("case_id", caseId)
-        .order("created_at", { ascending: false });
-
-      if (eventsData) {
-        setEvents(eventsData as CaseEvent[]);
-      }
-    } catch (error) {
-      console.error("Ошибка при загрузке деталей дела:", error);
-    }
-  };
-
-  const canCreateCase = () => {
-    if (!userProfile) return false;
-    return ["PROSECUTOR", "JUDGE", "ATTORNEY_GENERAL", "CHIEF_JUSTICE", "TECH_ADMIN"].includes(userProfile.gov_role);
-  };
-
   const handleCreateCase = async () => {
-    if (!userProfile) return;
-    
+    if (!user) return;
+
     try {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from("cases")
         .insert({
-          title: createForm.title,
           case_number: createForm.case_number,
-          type: createForm.type,
-          status: "pending",
-          start_date: new Date().toISOString(),
-          prosecutor_id: userProfile.gov_role === "PROSECUTOR" ? userProfile.id : undefined
-        })
-        .select()
-        .single();
+          title: createForm.title,
+          description: createForm.description || null,
+          prosecutor_id: user.id,
+          judge_id: createForm.judge_id || null
+        });
 
       if (error) {
-        console.error("Ошибка при создании дела:", error);
+        setError(`Ошибка создания дела: ${error.message}`);
         return;
       }
 
-      // Создаем событие для дела (если таблица существует)
-      try {
-        await supabase
-          .from("case_events")
-          .insert({
-            case_id: data.id,
-            event: "Дело создано",
-            description: createForm.description || "Дело было создано в системе"
-          });
-      } catch (error) {
-        console.log("Таблица case_events не существует, пропускаем создание события");
+      // Закрываем форму и перезагружаем
+      setShowCreateForm(false);
+      setCreateForm({ case_number: "", title: "", description: "", judge_id: "" });
+      await loadUserAndCases();
+      setError(""); // Очищаем ошибки
+    } catch (err) {
+      setError(`Ошибка: ${err instanceof Error ? err.message : "Неизвестная ошибка"}`);
+    }
+  };
+
+  const handleDeleteCase = async (id: string) => {
+    if (!confirm("Удалить это дело? Это действие необратимо.")) return;
+
+    try {
+      const { error } = await supabase
+        .from("cases")
+        .delete()
+        .eq("id", id);
+
+      if (error) {
+        setError(`Ошибка удаления: ${error.message}`);
+        return;
       }
 
-      // Закрываем форму и перезагружаем дела
-      setShowCreateForm(false);
-      setCreateForm({ title: "", case_number: "", type: "criminal", description: "" });
-      await loadCases();
-    } catch (error) {
-      console.error("Ошибка при создании дела:", error);
+      await loadUserAndCases();
+      setError(""); // Очищаем ошибки
+    } catch (err) {
+      setError(`Ошибка: ${err instanceof Error ? err.message : "Неизвестная ошибка"}`);
     }
   };
 
-  const getTypeLabel = (type: string) => {
-    switch (type) {
-      case "criminal": return "Уголовное";
-      case "civil": return "Гражданское";
-      case "administrative": return "Административное";
-      default: return type;
-    }
-  };
-
-  const getStatusLabel = (status: string) => {
+  const getStatusColor = (status: string) => {
     switch (status) {
-      case "active": return "Активное";
-      case "closed": return "Закрыто";
-      case "pending": return "Ожидает";
+      case 'open': return 'bg-blue-100 text-blue-800';
+      case 'in_progress': return 'bg-yellow-100 text-yellow-800';
+      case 'closed': return 'bg-green-100 text-green-800';
+      case 'archived': return 'bg-gray-100 text-gray-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'open': return 'Открыто';
+      case 'in_progress': return 'В процессе';
+      case 'closed': return 'Закрыто';
+      case 'archived': return 'Архивировано';
       default: return status;
     }
   };
 
-  const getStatusClass = (status: string) => {
-    switch (status) {
-      case "active": return "bg-green-100 text-green-800";
-      case "closed": return "bg-gray-100 text-gray-800";
-      case "pending": return "bg-yellow-100 text-yellow-800";
-      default: return "bg-gray-100 text-gray-800";
-    }
-  };
-
-  const filteredCases = cases.filter(case_ => {
-    const matchesFilter = filter === "all" || case_.status === filter;
-    const matchesSearch = searchTerm === "" || 
-      case_.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      case_.case_number.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesFilter && matchesSearch;
-  });
-
   if (loading) {
     return (
-      <div className="max-w-6xl mx-auto p-6">
-        <div className="text-center py-8">Загрузка...</div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Загрузка...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Дела</h1>
-        {canCreateCase() && (
-          <button 
-            onClick={() => setShowCreateForm(true)}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Создать дело
-          </button>
+    <div className="min-h-screen bg-gray-50">
+      {/* Заголовок */}
+      <div className="bg-white shadow-sm border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-6">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Судебные дела</h1>
+              <p className="mt-2 text-sm text-gray-600">
+                Реестр всех судебных дел
+              </p>
+            </div>
+            {canCreate && (
+              <button
+                onClick={() => setShowCreateForm(true)}
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Создать дело
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Основной контент */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Сообщения об ошибках */}
+        {error && (
+          <div className="mb-6 bg-red-50 border border-red-200 rounded-md p-4">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-red-800">{error}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Список дел */}
+        {cases.length === 0 ? (
+          <div className="text-center py-12">
+            <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <h3 className="mt-2 text-sm font-medium text-gray-900">Нет дел</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              Пока не создано ни одного судебного дела.
+            </p>
+          </div>
+        ) : (
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {cases.map((caseItem) => (
+              <div key={caseItem.id} className="bg-white overflow-hidden shadow rounded-lg">
+                <div className="p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(caseItem.status)}`}>
+                      {getStatusText(caseItem.status)}
+                    </span>
+                    {user && (user.gov_role === "TECH_ADMIN" || caseItem.prosecutor_id === user.id) && (
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => handleDeleteCase(caseItem.id)}
+                          className="text-red-600 hover:text-red-800"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="mb-3">
+                    <span className="text-sm font-mono text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                      {caseItem.case_number}
+                    </span>
+                  </div>
+                  
+                  <h3 className="text-lg font-medium text-gray-900 mb-2 line-clamp-2">
+                    {caseItem.title}
+                  </h3>
+                  
+                  {caseItem.description && (
+                    <p className="text-sm text-gray-600 mb-4 line-clamp-3">
+                      {caseItem.description}
+                    </p>
+                  )}
+                  
+                  <div className="border-t pt-4 space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-500">Прокурор:</span>
+                      <span className="text-gray-900 font-medium">{caseItem.prosecutor_name}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-500">Судья:</span>
+                      <span className="text-gray-900 font-medium">{caseItem.judge_name}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm text-gray-500">
+                      <span>Дата создания:</span>
+                      <span>{new Date(caseItem.created_at).toLocaleDateString("ru-RU")}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
-      {/* Форма создания дела */}
+      {/* Модальное окно создания дела */}
       {showCreateForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-2xl w-full p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold">Создать новое дело</h2>
-              <button
-                onClick={() => setShowCreateForm(false)}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Название дела
-                </label>
-                <input
-                  type="text"
-                  value={createForm.title}
-                  onChange={(e) => setCreateForm({...createForm, title: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Введите название дела"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Номер дела
-                </label>
-                <input
-                  type="text"
-                  value={createForm.case_number}
-                  onChange={(e) => setCreateForm({...createForm, case_number: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Введите номер дела"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Тип дела
-                </label>
-                <select
-                  value={createForm.type}
-                  onChange={(e) => setCreateForm({...createForm, type: e.target.value as any})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="criminal">Уголовное</option>
-                  <option value="civil">Гражданское</option>
-                  <option value="administrative">Административное</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Описание
-                </label>
-                <textarea
-                  value={createForm.description}
-                  onChange={(e) => setCreateForm({...createForm, description: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  rows={3}
-                  placeholder="Краткое описание дела"
-                />
-              </div>
-
-              <div className="flex gap-3 pt-4">
-                <button
-                  onClick={handleCreateCase}
-                  disabled={!createForm.title || !createForm.case_number}
-                  className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                >
-                  Создать дело
-                </button>
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-gray-900">Создать новое судебное дело</h3>
                 <button
                   onClick={() => setShowCreateForm(false)}
-                  className="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400"
-                >
-                  Отмена
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Фильтры и поиск */}
-      <div className="mb-6 space-y-4">
-        <div className="flex gap-2">
-          <button
-            onClick={() => setFilter("all")}
-            className={`px-4 py-2 rounded-lg text-sm font-medium ${
-              filter === "all" 
-                ? "bg-blue-600 text-white" 
-                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-            }`}
-          >
-            Все
-          </button>
-          <button
-            onClick={() => setFilter("active")}
-            className={`px-4 py-2 rounded-lg text-sm font-medium ${
-              filter === "active" 
-                ? "bg-blue-600 text-white" 
-                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-            }`}
-          >
-            Активные
-          </button>
-          <button
-            onClick={() => setFilter("pending")}
-            className={`px-4 py-2 rounded-lg text-sm font-medium ${
-              filter === "pending" 
-                ? "bg-blue-600 text-white" 
-                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-            }`}
-          >
-            Ожидающие
-          </button>
-          <button
-            onClick={() => setFilter("closed")}
-            className={`px-4 py-2 rounded-lg text-sm font-medium ${
-              filter === "closed" 
-                ? "bg-blue-600 text-white" 
-                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-            }`}
-          >
-            Закрытые
-          </button>
-        </div>
-
-        <input
-          type="text"
-          placeholder="Поиск по названию или номеру дела..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-      </div>
-
-      {/* Список дел */}
-      <div className="grid gap-4">
-        {filteredCases.length > 0 ? (
-          filteredCases.map((case_) => (
-            <div
-              key={case_.id}
-              className="bg-white rounded-lg border p-6 hover:shadow-md transition-shadow cursor-pointer"
-              onClick={() => {
-                setSelectedCase(case_);
-                loadCaseDetails(case_.id);
-              }}
-            >
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <h3 className="text-lg font-semibold">{case_.title}</h3>
-                  <p className="text-sm text-gray-600">№{case_.case_number}</p>
-                </div>
-                <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusClass(case_.status)}`}>
-                  {getStatusLabel(case_.status)}
-                </span>
-              </div>
-
-              <div className="grid md:grid-cols-3 gap-4 text-sm">
-                <div>
-                  <span className="text-gray-500">Тип:</span>{" "}
-                  <span className="font-medium">{getTypeLabel(case_.type)}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500">Дата начала:</span>{" "}
-                  <span className="font-medium">
-                    {new Date(case_.start_date).toLocaleDateString("ru-RU")}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-gray-500">Судья:</span>{" "}
-                  <span className="font-medium">
-                    {case_.judge_id && profiles[case_.judge_id] 
-                      ? profiles[case_.judge_id].nickname 
-                      : "Не назначен"}
-                  </span>
-                </div>
-              </div>
-            </div>
-          ))
-        ) : (
-          <div className="text-center py-8 text-gray-500">
-            {filter === "all" ? "Нет дел" : `Нет дел со статусом "${filter}"`}
-          </div>
-        )}
-      </div>
-
-      {/* Модальное окно с деталями дела */}
-      {selectedCase && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold">{selectedCase.title}</h2>
-                <button
-                  onClick={() => setSelectedCase(null)}
-                  className="text-gray-500 hover:text-gray-700"
+                  className="text-gray-400 hover:text-gray-600"
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
               </div>
-
-              {/* Основная информация */}
-              <div className="grid md:grid-cols-2 gap-6 mb-6">
-                <div>
-                  <h3 className="font-semibold mb-3">Информация о деле</h3>
-                  <div className="space-y-2 text-sm">
-                    <div><span className="text-gray-500">Номер дела:</span> {selectedCase.case_number}</div>
-                    <div><span className="text-gray-500">Тип:</span> {getTypeLabel(selectedCase.type)}</div>
-                    <div><span className="text-gray-500">Статус:</span> {getStatusLabel(selectedCase.status)}</div>
-                    <div><span className="text-gray-500">Дата начала:</span> {new Date(selectedCase.start_date).toLocaleDateString("ru-RU")}</div>
-                    {selectedCase.end_date && (
-                      <div><span className="text-gray-500">Дата окончания:</span> {new Date(selectedCase.end_date).toLocaleDateString("ru-RU")}</div>
-                    )}
+              
+              <form onSubmit={(e) => { e.preventDefault(); handleCreateCase(); }}>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Номер дела *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={createForm.case_number}
+                      onChange={(e) => setCreateForm({...createForm, case_number: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Дело №123/2024"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Название дела *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={createForm.title}
+                      onChange={(e) => setCreateForm({...createForm, title: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Введите название судебного дела"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Описание
+                    </label>
+                    <textarea
+                      rows={4}
+                      value={createForm.description}
+                      onChange={(e) => setCreateForm({...createForm, description: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Краткое описание дела"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Судья (опционально)
+                    </label>
+                    <select
+                      value={createForm.judge_id}
+                      onChange={(e) => setCreateForm({...createForm, judge_id: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="">Не назначен</option>
+                      {/* Здесь можно добавить список судей */}
+                    </select>
                   </div>
                 </div>
-
-                <div>
-                  <h3 className="font-semibold mb-3">Участники</h3>
-                  <div className="space-y-2 text-sm">
-                    <div>
-                      <span className="text-gray-500">Судья:</span>{" "}
-                      {selectedCase.judge_id && profiles[selectedCase.judge_id] 
-                        ? profiles[selectedCase.judge_id].nickname 
-                        : "Не назначен"}
-                    </div>
-                    <div>
-                      <span className="text-gray-500">Прокурор:</span>{" "}
-                      {selectedCase.prosecutor_id && profiles[selectedCase.prosecutor_id] 
-                        ? profiles[selectedCase.prosecutor_id].nickname 
-                        : "Не назначен"}
-                    </div>
-                  </div>
+                
+                <div className="flex justify-end space-x-3 mt-6">
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateForm(false)}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!createForm.case_number || !createForm.title}
+                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  >
+                    Создать дело
+                  </button>
                 </div>
-              </div>
-
-              {/* Участники дела */}
-              {participants.length > 0 && (
-                <div className="mb-6">
-                  <h3 className="font-semibold mb-3">Участники дела</h3>
-                  <div className="grid gap-2">
-                    {participants.map((participant) => (
-                      <div key={participant.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                        <div>
-                          <div className="font-medium">{participant.name}</div>
-                          <div className="text-sm text-gray-600">{participant.role}</div>
-                        </div>
-                        {participant.static_id && (
-                          <div className="text-sm text-gray-500">ID: {participant.static_id}</div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Документы */}
-              {documents.length > 0 && (
-                <div className="mb-6">
-                  <h3 className="font-semibold mb-3">Документы</h3>
-                  <div className="space-y-2">
-                    {documents.map((document) => (
-                      <div key={document.id} className="p-3 border rounded-lg">
-                        <div className="font-medium">{document.title}</div>
-                        <div className="text-sm text-gray-600">{document.document_type}</div>
-                        <div className="text-xs text-gray-500">
-                          {new Date(document.created_at).toLocaleDateString("ru-RU")}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Таймлайн событий */}
-              {events.length > 0 && (
-                <div>
-                  <h3 className="font-semibold mb-3">Таймлайн</h3>
-                  <div className="space-y-3">
-                    {events.map((event) => (
-                      <div key={event.id} className="flex items-start space-x-3">
-                        <div className="w-2 h-2 bg-blue-500 rounded-full mt-2"></div>
-                        <div className="flex-1">
-                          <div className="font-medium">{event.event}</div>
-                          {event.description && (
-                            <div className="text-sm text-gray-600">{event.description}</div>
-                          )}
-                          <div className="text-xs text-gray-500">
-                            {new Date(event.created_at).toLocaleDateString("ru-RU")}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+              </form>
             </div>
           </div>
         </div>

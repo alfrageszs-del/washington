@@ -4,30 +4,33 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase/client";
 import type { Profile } from "../../lib/supabase/client";
 
-interface Inspection {
+type Inspection = {
   id: string;
   title: string;
   inspector_id: string;
+  inspector_name: string;
   target_entity: string;
-  inspection_type: "scheduled" | "unscheduled" | "follow_up";
-  status: "planned" | "in_progress" | "completed" | "cancelled";
+  inspection_type: string;
+  status: string;
   start_date: string;
   end_date?: string;
   findings?: string;
   recommendations?: string;
   created_at: string;
   updated_at: string;
-}
+};
 
 export default function InspectionsPage() {
   const [inspections, setInspections] = useState<Inspection[]>([]);
-  const [userProfile, setUserProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [user, setUser] = useState<Profile | null>(null);
+  const [canCreate, setCanCreate] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createForm, setCreateForm] = useState({
     title: "",
     target_entity: "",
-    inspection_type: "scheduled" as "scheduled" | "unscheduled" | "follow_up",
+    inspection_type: "scheduled" as const,
     start_date: "",
     end_date: "",
     findings: "",
@@ -35,331 +38,431 @@ export default function InspectionsPage() {
   });
 
   useEffect(() => {
-    loadUserProfile();
-    loadInspections();
+    loadUserAndInspections();
   }, []);
 
-  const loadUserProfile = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .single();
-      setUserProfile(profile);
-    }
-  };
-
-  const loadInspections = async () => {
-    setLoading(true);
+  const loadUserAndInspections = async () => {
     try {
-      const { data: inspectionsData } = await supabase
+      // Загружаем пользователя
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", session.user.id)
+          .single();
+        
+        if (profile) {
+          setUser(profile);
+          setCanCreate(
+            profile.gov_role === "TECH_ADMIN" || 
+            profile.gov_role === "ATTORNEY_GENERAL" || 
+            profile.gov_role === "CHIEF_JUSTICE"
+          );
+        }
+      }
+
+      // Загружаем проверки с информацией об инспекторе
+      const { data: inspectionsData, error: inspectionsError } = await supabase
         .from("inspections")
-        .select("*")
+        .select(`
+          *,
+          inspector:profiles!inspections_inspector_id_fkey(full_name)
+        `)
         .order("created_at", { ascending: false });
 
-      if (inspectionsData) {
-        setInspections(inspectionsData as Inspection[]);
+      if (inspectionsError) {
+        setError(`Ошибка загрузки проверок: ${inspectionsError.message}`);
+      } else {
+        const formattedInspections = inspectionsData?.map(inspection => ({
+          ...inspection,
+          inspector_name: inspection.inspector?.full_name || "Неизвестно"
+        })) || [];
+        setInspections(formattedInspections);
       }
-    } catch (error) {
-      console.error("Ошибка при загрузке проверок:", error);
+    } catch (err) {
+      setError(`Ошибка: ${err instanceof Error ? err.message : "Неизвестная ошибка"}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const canCreateInspection = () => {
-    if (!userProfile) return false;
-    return ["TECH_ADMIN", "ATTORNEY_GENERAL", "CHIEF_JUSTICE"].includes(userProfile.gov_role);
-  };
-
   const handleCreateInspection = async () => {
-    if (!userProfile) return;
-    
+    if (!user) return;
+
     try {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from("inspections")
         .insert({
           title: createForm.title,
-          inspector_id: userProfile.id,
           target_entity: createForm.target_entity,
           inspection_type: createForm.inspection_type,
-          status: "planned",
           start_date: createForm.start_date,
           end_date: createForm.end_date || null,
           findings: createForm.findings || null,
-          recommendations: createForm.recommendations || null
-        })
-        .select()
-        .single();
+          recommendations: createForm.recommendations || null,
+          inspector_id: user.id
+        });
 
       if (error) {
-        console.error("Ошибка при создании проверки:", error);
+        setError(`Ошибка создания проверки: ${error.message}`);
         return;
       }
 
-      // Закрываем форму и перезагружаем проверки
+      // Закрываем форму и перезагружаем
       setShowCreateForm(false);
-      setCreateForm({
-        title: "",
-        target_entity: "",
-        inspection_type: "scheduled",
-        start_date: "",
-        end_date: "",
-        findings: "",
-        recommendations: ""
+      setCreateForm({ 
+        title: "", 
+        target_entity: "", 
+        inspection_type: "scheduled", 
+        start_date: "", 
+        end_date: "", 
+        findings: "", 
+        recommendations: "" 
       });
-      await loadInspections();
-    } catch (error) {
-      console.error("Ошибка при создании проверки:", error);
+      await loadUserAndInspections();
+      setError(""); // Очищаем ошибки
+    } catch (err) {
+      setError(`Ошибка: ${err instanceof Error ? err.message : "Неизвестная ошибка"}`);
     }
   };
 
-  const getTypeLabel = (type: string) => {
+  const handleDeleteInspection = async (id: string) => {
+    if (!confirm("Удалить эту проверку? Это действие необратимо.")) return;
+
+    try {
+      const { error } = await supabase
+        .from("inspections")
+        .delete()
+        .eq("id", id);
+
+      if (error) {
+        setError(`Ошибка удаления: ${error.message}`);
+        return;
+      }
+
+      await loadUserAndInspections();
+      setError(""); // Очищаем ошибки
+    } catch (err) {
+      setError(`Ошибка: ${err instanceof Error ? err.message : "Неизвестная ошибка"}`);
+    }
+  };
+
+  const getInspectionTypeText = (type: string) => {
     switch (type) {
-      case "scheduled": return "Плановая";
-      case "unscheduled": return "Внеплановая";
-      case "follow_up": return "Повторная";
+      case 'scheduled': return 'Плановая';
+      case 'unscheduled': return 'Внеплановая';
+      case 'follow_up': return 'Повторная';
       default: return type;
     }
   };
 
-  const getStatusLabel = (status: string) => {
+  const getStatusColor = (status: string) => {
     switch (status) {
-      case "planned": return "Запланирована";
-      case "in_progress": return "В процессе";
-      case "completed": return "Завершена";
-      case "cancelled": return "Отменена";
-      default: return status;
+      case 'planned': return 'bg-blue-100 text-blue-800';
+      case 'in_progress': return 'bg-yellow-100 text-yellow-800';
+      case 'completed': return 'bg-green-100 text-green-800';
+      case 'cancelled': return 'bg-red-100 text-red-800';
+      default: return 'bg-gray-100 text-gray-800';
     }
   };
 
-  const getStatusClass = (status: string) => {
+  const getStatusText = (status: string) => {
     switch (status) {
-      case "planned": return "bg-blue-100 text-blue-800";
-      case "in_progress": return "bg-yellow-100 text-yellow-800";
-      case "completed": return "bg-green-100 text-green-800";
-      case "cancelled": return "bg-red-100 text-red-800";
-      default: return "bg-gray-100 text-gray-800";
+      case 'planned': return 'Запланирована';
+      case 'in_progress': return 'В процессе';
+      case 'completed': return 'Завершена';
+      case 'cancelled': return 'Отменена';
+      default: return status;
     }
   };
 
   if (loading) {
     return (
-      <div className="max-w-6xl mx-auto p-6">
-        <div className="text-center py-8">Загрузка...</div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Загрузка...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Проверки и надзор</h1>
-        {canCreateInspection() && (
-          <button
-            onClick={() => setShowCreateForm(true)}
-            className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
-          >
-            Создать проверку
-          </button>
+    <div className="min-h-screen bg-gray-50">
+      {/* Заголовок */}
+      <div className="bg-white shadow-sm border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-6">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Проверки и надзор</h1>
+              <p className="mt-2 text-sm text-gray-600">
+                Реестр всех проверок и надзорных мероприятий
+              </p>
+            </div>
+            {canCreate && (
+              <button
+                onClick={() => setShowCreateForm(true)}
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+              >
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Создать проверку
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Основной контент */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Сообщения об ошибках */}
+        {error && (
+          <div className="mb-6 bg-red-50 border border-red-200 rounded-md p-4">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-red-800">{error}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Список проверок */}
+        {inspections.length === 0 ? (
+          <div className="text-center py-12">
+            <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+            </svg>
+            <h3 className="mt-2 text-sm font-medium text-gray-900">Нет проверок</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              Пока не создано ни одной проверки.
+            </p>
+          </div>
+        ) : (
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {inspections.map((inspection) => (
+              <div key={inspection.id} className="bg-white overflow-hidden shadow rounded-lg">
+                <div className="p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(inspection.status)}`}>
+                      {getStatusText(inspection.status)}
+                    </span>
+                    {user && (user.gov_role === "TECH_ADMIN" || inspection.inspector_id === user.id) && (
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => handleDeleteInspection(inspection.id)}
+                          className="text-red-600 hover:text-red-800"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="mb-3">
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                      {getInspectionTypeText(inspection.inspection_type)}
+                    </span>
+                  </div>
+                  
+                  <h3 className="text-lg font-medium text-gray-900 mb-2 line-clamp-2">
+                    {inspection.title}
+                  </h3>
+                  
+                  <div className="mb-4">
+                    <p className="text-sm text-gray-600">
+                      <span className="font-medium">Объект:</span> {inspection.target_entity}
+                    </p>
+                  </div>
+                  
+                  {inspection.findings && (
+                    <div className="mb-4">
+                      <h4 className="text-sm font-medium text-gray-700 mb-1">Результаты:</h4>
+                      <p className="text-sm text-gray-600 line-clamp-3">
+                        {inspection.findings}
+                      </p>
+                    </div>
+                  )}
+                  
+                  {inspection.recommendations && (
+                    <div className="mb-4">
+                      <h4 className="text-sm font-medium text-gray-700 mb-1">Рекомендации:</h4>
+                      <p className="text-sm text-gray-600 line-clamp-3">
+                        {inspection.recommendations}
+                      </p>
+                    </div>
+                  )}
+                  
+                  <div className="border-t pt-4 space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-500">Инспектор:</span>
+                      <span className="text-gray-900 font-medium">{inspection.inspector_name}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-500">Начало:</span>
+                      <span className="text-gray-900 font-medium">{new Date(inspection.start_date).toLocaleDateString("ru-RU")}</span>
+                    </div>
+                    {inspection.end_date && (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-500">Окончание:</span>
+                        <span className="text-gray-900 font-medium">{new Date(inspection.end_date).toLocaleDateString("ru-RU")}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between text-sm text-gray-500">
+                      <span>Дата создания:</span>
+                      <span>{new Date(inspection.created_at).toLocaleDateString("ru-RU")}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
-      {/* Форма создания проверки */}
+      {/* Модальное окно создания проверки */}
       {showCreateForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-2xl w-full p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold">Создать новую проверку</h2>
-              <button
-                onClick={() => setShowCreateForm(false)}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Название проверки
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={createForm.title}
-                  onChange={(e) => setCreateForm({...createForm, title: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Введите название проверки"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Объект проверки
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={createForm.target_entity}
-                  onChange={(e) => setCreateForm({...createForm, target_entity: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Введите объект проверки"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Тип проверки
-                </label>
-                <select
-                  value={createForm.inspection_type}
-                  onChange={(e) => setCreateForm({...createForm, inspection_type: e.target.value as any})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="scheduled">Плановая</option>
-                  <option value="unscheduled">Внеплановая</option>
-                  <option value="follow_up">Повторная</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Дата начала
-                </label>
-                <input
-                  type="datetime-local"
-                  required
-                  value={createForm.start_date}
-                  onChange={(e) => setCreateForm({...createForm, start_date: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Дата окончания (необязательно)
-                </label>
-                <input
-                  type="datetime-local"
-                  value={createForm.end_date}
-                  onChange={(e) => setCreateForm({...createForm, end_date: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Найденные нарушения
-                </label>
-                <textarea
-                  value={createForm.findings}
-                  onChange={(e) => setCreateForm({...createForm, findings: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  rows={3}
-                  placeholder="Опишите найденные нарушения"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Рекомендации
-                </label>
-                <textarea
-                  value={createForm.recommendations}
-                  onChange={(e) => setCreateForm({...createForm, recommendations: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  rows={3}
-                  placeholder="Укажите рекомендации по устранению нарушений"
-                />
-              </div>
-
-              <div className="flex gap-3 pt-4">
-                <button
-                  onClick={handleCreateInspection}
-                  disabled={!createForm.title || !createForm.target_entity || !createForm.start_date}
-                  className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                >
-                  Создать проверку
-                </button>
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-gray-900">Создать новую проверку</h3>
                 <button
                   onClick={() => setShowCreateForm(false)}
-                  className="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400"
+                  className="text-gray-400 hover:text-gray-600"
                 >
-                  Отмена
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
                 </button>
               </div>
+              
+              <form onSubmit={(e) => { e.preventDefault(); handleCreateInspection(); }}>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Название проверки *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={createForm.title}
+                      onChange={(e) => setCreateForm({...createForm, title: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                      placeholder="Введите название проверки"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Объект проверки *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={createForm.target_entity}
+                      onChange={(e) => setCreateForm({...createForm, target_entity: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                      placeholder="Название организации или объекта"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Тип проверки *
+                    </label>
+                    <select
+                      value={createForm.inspection_type}
+                      onChange={(e) => setCreateForm({...createForm, inspection_type: e.target.value as any})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    >
+                      <option value="scheduled">Плановая</option>
+                      <option value="unscheduled">Внеплановая</option>
+                      <option value="follow_up">Повторная</option>
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Дата начала *
+                    </label>
+                    <input
+                      type="datetime-local"
+                      required
+                      value={createForm.start_date}
+                      onChange={(e) => setCreateForm({...createForm, start_date: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Дата окончания
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={createForm.end_date}
+                      onChange={(e) => setCreateForm({...createForm, end_date: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Результаты проверки
+                    </label>
+                    <textarea
+                      rows={4}
+                      value={createForm.findings}
+                      onChange={(e) => setCreateForm({...createForm, findings: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                      placeholder="Результаты и выводы проверки"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Рекомендации
+                    </label>
+                    <textarea
+                      rows={4}
+                      value={createForm.recommendations}
+                      onChange={(e) => setCreateForm({...createForm, recommendations: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                      placeholder="Рекомендации по устранению нарушений"
+                    />
+                  </div>
+                </div>
+                
+                <div className="flex justify-end space-x-3 mt-6">
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateForm(false)}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!createForm.title || !createForm.target_entity || !createForm.start_date}
+                    className="px-4 py-2 text-sm font-medium text-white bg-purple-600 border border-transparent rounded-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  >
+                    Создать проверку
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         </div>
       )}
-
-      {/* Список проверок */}
-      <div className="grid gap-4">
-        {inspections.length > 0 ? (
-          inspections.map((inspection) => (
-            <div key={inspection.id} className="bg-white rounded-lg border p-6">
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <h3 className="text-lg font-semibold">{inspection.title}</h3>
-                  <p className="text-sm text-gray-600">Объект: {inspection.target_entity}</p>
-                </div>
-                <div className="flex gap-2">
-                  <span className="px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
-                    {getTypeLabel(inspection.inspection_type)}
-                  </span>
-                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusClass(inspection.status)}`}>
-                    {getStatusLabel(inspection.status)}
-                  </span>
-                </div>
-              </div>
-
-              <div className="grid md:grid-cols-2 gap-4 text-sm mb-4">
-                <div>
-                  <span className="text-gray-500">Дата начала:</span>{" "}
-                  <span className="font-medium">
-                    {new Date(inspection.start_date).toLocaleString("ru-RU")}
-                  </span>
-                </div>
-                {inspection.end_date && (
-                  <div>
-                    <span className="text-gray-500">Дата окончания:</span>{" "}
-                    <span className="font-medium">
-                      {new Date(inspection.end_date).toLocaleString("ru-RU")}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {inspection.findings && (
-                <div className="mb-4">
-                  <span className="text-sm text-gray-500">Нарушения:</span>
-                  <div className="mt-1 text-sm text-gray-700">{inspection.findings}</div>
-                </div>
-              )}
-
-              {inspection.recommendations && (
-                <div className="mb-4">
-                  <span className="text-sm text-gray-500">Рекомендации:</span>
-                  <div className="mt-1 text-sm text-gray-700">{inspection.recommendations}</div>
-                </div>
-              )}
-
-              <div className="text-xs text-gray-500">
-                {new Date(inspection.created_at).toLocaleDateString("ru-RU")}
-              </div>
-            </div>
-          ))
-        ) : (
-          <div className="text-center py-8 text-gray-500">
-            Проверки не найдены
-          </div>
-        )}
-      </div>
     </div>
   );
 }
