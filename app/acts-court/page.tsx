@@ -60,7 +60,7 @@ export default function CourtActsPage() {
         .from("court_acts")
         .select(`
           *,
-          judge:profiles!court_acts_judge_id_fkey(nickname, static_id)
+          judge:profiles(nickname, static_id)
         `)
         .eq("status", "published")
         .order("created_at", { ascending: false });

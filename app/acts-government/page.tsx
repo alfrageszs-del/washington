@@ -61,7 +61,7 @@ export default function GovActsPage() {
         .from("gov_acts")
         .select(`
           *,
-          author:profiles!gov_acts_author_id_fkey(nickname, static_id)
+          author:profiles(nickname, static_id)
         `)
         .eq("status", "published")
         .order("created_at", { ascending: false });

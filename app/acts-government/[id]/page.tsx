@@ -40,7 +40,7 @@ export default function GovActPage() {
           .from("gov_acts")
           .select(`
             *,
-            author:profiles!author_id(nickname, static_id)
+            author:profiles(nickname, static_id)
           `)
           .eq("id", params.id)
           .single();

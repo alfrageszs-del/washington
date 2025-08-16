@@ -40,7 +40,7 @@ export default function CourtActPage() {
           .from("court_acts")
           .select(`
             *,
-            judge:profiles!judge_id(nickname, static_id)
+            judge:profiles(nickname, static_id)
           `)
           .eq("id", params.id)
           .single();
