@@ -36,9 +36,10 @@ export default function NewCourtSessionPage() {
     }
   };
 
-  const canCreateSession = () => {
+  const canCreateSession = () => {
     if (!userProfile) return false;
-    return ["JUDGE", "CHIEF_JUSTICE", "TECH_ADMIN"].includes(userProfile.gov_role);
+    // Align with RLS: TECH_ADMIN, ATTORNEY_GENERAL, CHIEF_JUSTICE
+    return ["TECH_ADMIN", "ATTORNEY_GENERAL", "CHIEF_JUSTICE"].includes(userProfile.gov_role);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

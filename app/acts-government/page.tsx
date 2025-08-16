@@ -89,6 +89,7 @@ export default function GovActsPage() {
       const { error } = await supabase
         .from("gov_acts")
         .insert({
+          act_number: `GA-${Date.now()}`,
           title: createForm.title,
           content: createForm.content,
           status: createForm.status,

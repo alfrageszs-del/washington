@@ -67,12 +67,12 @@ export default function NewGovActPage() {
     const { data, error } = await supabase
       .from("gov_acts")
       .insert({
-        author_id: uid,
+        act_number: `GA-${Date.now()}`,
+        created_by: uid,
         title: title.trim(),
-        summary: summary.trim() || null,
         content: content.trim(),
         source_url: url.trim() || null,
-        is_published: true,
+        status: 'PUBLISHED'
       })
       .select("id")
       .single();

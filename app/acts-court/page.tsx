@@ -88,6 +88,7 @@ export default function CourtActsPage() {
       const { error } = await supabase
         .from("court_acts")
         .insert({
+          act_number: `CA-${Date.now()}`,
           title: createForm.title,
           content: createForm.content,
           status: createForm.status,

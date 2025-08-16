@@ -45,10 +45,11 @@ export default function NewCourtActPage() {
       const { data, error } = await supabase
         .from("court_acts")
         .insert({
+          act_number: `CA-${Date.now()}`,
           title: form.title,
           content: form.content,
-          status: form.status,
-          judge_id: userProfile.id
+          status: form.status.toUpperCase(),
+          created_by: userProfile.id
         })
         .select()
         .single();
