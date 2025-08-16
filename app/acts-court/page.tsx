@@ -35,14 +35,23 @@ export default function CourtActsPage() {
       setLoading(true);
       setInfo("");
 
-      const { data: rows, error: selErr } = await supabase
-        .from("court_acts")
-        .select("id,judge_id,title,content,created_at,status,source_url")
-        .eq("status", "published")
-        .order("created_at", { ascending: false });
+      try {
+        const { data: rows, error: selErr } = await supabase
+          .from("court_acts")
+          .select("id,judge_id,title,content,created_at,status,source_url")
+          .eq("status", "published")
+          .order("created_at", { ascending: false });
 
-      if (selErr) setInfo(selErr.message);
-      if (alive) setActs((rows ?? []) as CourtActRow[]);
+        if (selErr) {
+          console.error("Ошибка загрузки актов:", selErr);
+          setInfo(`Ошибка загрузки актов: ${selErr.message}`);
+        } else {
+          if (alive) setActs((rows ?? []) as CourtActRow[]);
+        }
+      } catch (error) {
+        console.error("Исключение при загрузке актов:", error);
+        if (alive) setInfo(`Ошибка: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`);
+      }
 
       const { data: sess } = await supabase.auth.getSession();
       const uid = sess.session?.user?.id;
@@ -107,14 +116,23 @@ export default function CourtActsPage() {
   };
 
   const loadActs = async () => {
-    const { data: rows, error: selErr } = await supabase
-      .from("court_acts")
-      .select("id,judge_id,title,content,created_at,status,source_url")
-      .eq("status", "published")
-      .order("created_at", { ascending: false });
+    try {
+      const { data: rows, error: selErr } = await supabase
+        .from("court_acts")
+        .select("id,judge_id,title,content,created_at,status,source_url")
+        .eq("status", "published")
+        .order("created_at", { ascending: false });
 
-    if (selErr) setInfo(selErr.message);
-    setActs((rows ?? []) as CourtActRow[]);
+      if (selErr) {
+        console.error("Ошибка загрузки актов:", selErr);
+        setInfo(`Ошибка загрузки актов: ${selErr.message}`);
+      } else {
+        setActs((rows ?? []) as CourtActRow[]);
+      }
+    } catch (error) {
+      console.error("Исключение при загрузке актов:", error);
+      setInfo(`Ошибка: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`);
+    }
   };
 
   const onDelete = async (id: string) => {

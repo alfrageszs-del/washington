@@ -36,14 +36,23 @@ export default function GovActsPage() {
       setInfo("");
 
       // 1) список опубликованных (берём author_id, чтобы знать права)
-      const { data: rows, error: selErr } = await supabase
-        .from("gov_acts")
-        .select("id,author_id,title,content,created_at,status,source_url")
-        .eq("status", "published")
-        .order("created_at", { ascending: false });
+      try {
+        const { data: rows, error: selErr } = await supabase
+          .from("gov_acts")
+          .select("id,author_id,title,content,created_at,status,source_url")
+          .eq("status", "published")
+          .order("created_at", { ascending: false });
 
-      if (selErr) setInfo(selErr.message);
-      if (alive) setActs((rows ?? []) as GovActRow[]);
+        if (selErr) {
+          console.error("Ошибка загрузки актов:", selErr);
+          setInfo(`Ошибка загрузки актов: ${selErr.message}`);
+        } else {
+          if (alive) setActs((rows ?? []) as GovActRow[]);
+        }
+      } catch (error) {
+        console.error("Исключение при загрузке актов:", error);
+        if (alive) setInfo(`Ошибка: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`);
+      }
 
       // 2) мои права
       const { data: sess } = await supabase.auth.getSession();
@@ -111,14 +120,23 @@ export default function GovActsPage() {
   };
 
   const loadActs = async () => {
-    const { data: rows, error: selErr } = await supabase
-      .from("gov_acts")
-      .select("id,author_id,title,content,created_at,status,source_url")
-      .eq("status", "published")
-      .order("created_at", { ascending: false });
+    try {
+      const { data: rows, error: selErr } = await supabase
+        .from("gov_acts")
+        .select("id,author_id,title,content,created_at,status,source_url")
+        .eq("status", "published")
+        .order("created_at", { ascending: false });
 
-    if (selErr) setInfo(selErr.message);
-    setActs((rows ?? []) as GovActRow[]);
+      if (selErr) {
+        console.error("Ошибка загрузки актов:", selErr);
+        setInfo(`Ошибка загрузки актов: ${selErr.message}`);
+      } else {
+        setActs((rows ?? []) as GovActRow[]);
+      }
+    } catch (error) {
+      console.error("Исключение при загрузке актов:", error);
+      setInfo(`Ошибка: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`);
+    }
   };
 
   const onDelete = async (id: string) => {
