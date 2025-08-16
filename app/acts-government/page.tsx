@@ -113,7 +113,7 @@ export default function GovActsPage() {
   const loadActs = async () => {
     const { data: rows, error: selErr } = await supabase
       .from("gov_acts")
-      .select("id,author_id,title,content,created_at,status")
+      .select("id,author_id,title,content,created_at,status,source_url")
       .eq("status", "published")
       .order("created_at", { ascending: false });
 
