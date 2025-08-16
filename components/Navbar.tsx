@@ -110,12 +110,7 @@ export default function Navbar() {
       items: servicesMenu,
       show: true
     },
-    {
-      label: "Администрирование",
-      icon: "⚙️",
-      items: adminMenu,
-      show: isAdmin
-    }
+
   ];
 
   const DropdownMenu = ({ menu }: { menu: DropdownMenu }) => {
