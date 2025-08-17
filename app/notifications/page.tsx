@@ -26,7 +26,7 @@ export default function NotificationsPage() {
     { id: "document", label: "Документы", color: "bg-blue-100 text-blue-800" },
     { id: "court", label: "Суд", color: "bg-purple-100 text-purple-800" },
     { id: "fine", label: "Штрафы", color: "bg-yellow-100 text-yellow-800" },
-    { id: "wanted", label: "Ордера", color: "bg-red-100 text-red-800" },
+    { id: "wanted", label: "Ордера на арест", color: "bg-red-100 text-red-800" },
     { id: "system", label: "Система", color: "bg-gray-100 text-gray-800" },
     { id: "role_change", label: "Изменение роли", color: "bg-green-100 text-green-800" },
   ];

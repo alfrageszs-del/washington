@@ -24,7 +24,7 @@ export default function SearchPage() {
     { id: "act", label: "Акты суда", color: "bg-blue-100 text-blue-800" },
     { id: "government_act", label: "Акты правительства", color: "bg-green-100 text-green-800" },
     { id: "fine", label: "Штрафы", color: "bg-yellow-100 text-yellow-800" },
-    { id: "wanted", label: "Ордера", color: "bg-red-100 text-red-800" },
+    { id: "wanted", label: "Ордера на арест", color: "bg-red-100 text-red-800" },
   ];
 
   const handleSearch = async () => {

@@ -1,255 +1,528 @@
 // app/wanted/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase/client";
-import type { Profile } from "../../lib/supabase/client";
-
-type Wanted = {
-  id: string;
-  target_static_id: string;
-  target_name: string;
-  reason: string;
-  reward: number | null;
-  department: string | null;
-  status: "active" | "caught" | "cancelled";
-  created_at: string;
-};
-
-const statuses = ["active", "executed", "cancelled"] as const;
+import type { Profile, Warrant, WarrantType, WarrantStatus } from "../../lib/supabase/client";
 
 export default function WantedPage() {
-  const [me, setMe] = useState<Profile | null>(null);
-  const [rows, setRows] = useState<Wanted[]>([]);
-  const [q, setQ] = useState("");
-  const [status, setStatus] = useState<string>("Все статусы");
+  const [warrants, setWarrants] = useState<Warrant[]>([]);
   const [loading, setLoading] = useState(true);
-  const [info, setInfo] = useState("");
-
-  // form
-  const [sid, setSid] = useState("");
-  const [name, setName] = useState("");
-  const [desc, setDesc] = useState("");
-  const [reward, setReward] = useState<number>(0);
-
-  const canIssue = useMemo(
-    () => !!me && (me.gov_role === "TECH_ADMIN" || me.faction === "LSPD" || me.faction === "LSCSD" || me.faction === "FIB"),
-    [me]
-  );
+  const [error, setError] = useState("");
+  const [user, setUser] = useState<Profile | null>(null);
+  const [canCreate, setCanCreate] = useState(false);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    target_name: "",
+    warrant_type: "A" as WarrantType,
+    reason: "",
+    articles: "",
+    valid_until: "",
+    source_url: "",
+    notes: ""
+  });
 
   useEffect(() => {
-    (async () => {
-      setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { setMe(null); setRows([]); setLoading(false); return; }
-      const { data } = await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle();
-      setMe((data ?? null) as Profile | null);
-      setLoading(false);
-    })();
+    loadUserAndWarrants();
   }, []);
 
-  const load = async () => {
-    setLoading(true);
-    let qy = supabase.from("warrants").select("*").order("created_at", { ascending: false }).limit(300);
-    if (q.trim()) {
-      qy = qy.or(`target_static_id.ilike.%${q}%,target_name.ilike.%${q}%`);
+  const loadUserAndWarrants = async () => {
+    try {
+      // Загружаем пользователя
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", session.user.id)
+          .single();
+        
+        if (profile) {
+          setUser(profile);
+          setCanCreate(
+            profile.gov_role === "TECH_ADMIN" || 
+            profile.gov_role === "ATTORNEY_GENERAL" || 
+            profile.gov_role === "CHIEF_JUSTICE" ||
+            profile.gov_role === "PROSECUTOR" ||
+            profile.gov_role === "JUDGE"
+          );
+        }
+      }
+
+      // Загружаем ордера с информацией об авторе
+      const { data: warrantsData, error: warrantsError } = await supabase
+        .from("warrants")
+        .select(`
+          *,
+          issuer:profiles!warrants_issued_by_fkey(full_name)
+        `)
+        .order("created_at", { ascending: false });
+
+      if (warrantsError) {
+        setError(`Ошибка загрузки ордеров: ${warrantsError.message}`);
+      } else {
+        const formattedWarrants = warrantsData?.map(warrant => ({
+          ...warrant,
+          issuer_name: warrant.issuer?.full_name || "Неизвестно"
+        })) || [];
+        setWarrants(formattedWarrants);
+      }
+    } catch (err) {
+      setError(`Ошибка: ${err instanceof Error ? err.message : "Неизвестная ошибка"}`);
+    } finally {
+      setLoading(false);
     }
-    if (status !== "Все статусы") {
-      // Map UI labels to DB enum values
-      const map: Record<string, string> = {
-        "Активные": "active",
-        "Пойманные": "executed",
-        "Отмененные": "cancelled",
-      };
-      const key = map[status] || undefined;
-      if (key) qy = qy.eq("status", key);
+  };
+
+  const handleCreateWarrant = async () => {
+    if (!user) return;
+
+    try {
+      // Парсим статьи из строки в массив
+      const articlesArray = createForm.articles
+        .split(',')
+        .map(article => article.trim())
+        .filter(article => article.length > 0);
+
+      const { error } = await supabase
+        .from("warrants")
+        .insert({
+          warrant_number: `WNT-${Date.now()}`,
+          target_name: createForm.target_name,
+          warrant_type: createForm.warrant_type,
+          reason: createForm.reason,
+          articles: articlesArray,
+          issued_by: user.id,
+          status: "active",
+          valid_until: createForm.valid_until,
+          source_url: createForm.source_url || null,
+          notes: createForm.notes || null
+        });
+
+      if (error) {
+        setError(`Ошибка создания ордера: ${error.message}`);
+        return;
+      }
+
+      // Закрываем форму и перезагружаем
+      setShowCreateForm(false);
+      setCreateForm({ 
+        target_name: "", 
+        warrant_type: "A", 
+        reason: "", 
+        articles: "", 
+        valid_until: "", 
+        source_url: "", 
+        notes: "" 
+      });
+      await loadUserAndWarrants();
+      setError(""); // Очищаем ошибки
+    } catch (err) {
+      setError(`Ошибка: ${err instanceof Error ? err.message : "Неизвестная ошибка"}`);
     }
-    const { data, error } = await qy;
-    if (error) setInfo(error.message);
-    setRows((data ?? []) as Wanted[]);
-    setLoading(false);
   };
 
-  useEffect(() => { void load(); }, [q, status]);
+  const handleDeleteWarrant = async (id: string) => {
+    if (!confirm("Удалить этот ордер? Это действие необратимо.")) return;
 
-  const createWanted = async () => {
-    setInfo("");
-    if (!canIssue) { setInfo("Нет прав на создание ордеров"); return; }
-    if (!sid.trim() || !name.trim() || !desc.trim()) { setInfo("Заполните все поля"); return; }
+    try {
+      const { error } = await supabase
+        .from("warrants")
+        .delete()
+        .eq("id", id);
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setInfo("Вы не авторизованы"); return; }
+      if (error) {
+        setError(`Ошибка удаления: ${error.message}`);
+        return;
+      }
 
-    // Insert into warrants with required schema fields
-    const validUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-    const { error } = await supabase.from("warrants").insert([{
-      warrant_number: `WNT-${Date.now()}`,
-      target_name: name.trim(),
-      warrant_type: "A",
-      reason: `${desc.trim()}${sid.trim() ? ` (StaticID: ${sid.trim()})` : ""}${reward && reward > 0 ? ` [Награда: ${reward}]` : ""}`,
-      articles: ["WANTED"],
-      issued_by: user.id,
-      status: "active",
-      valid_until: validUntil,
-      notes: me?.faction ? `Ведомство: ${me.faction}` : null,
-    }]);
-    if (error) { setInfo(error.message); return; }
-
-    setSid(""); setName(""); setDesc(""); setReward(0);
-    await load();
+      await loadUserAndWarrants();
+      setError(""); // Очищаем ошибки
+    } catch (err) {
+      setError(`Ошибка: ${err instanceof Error ? err.message : "Неизвестная ошибка"}`);
+    }
   };
 
-  const setWStatus = async (id: string, s: "active" | "caught" | "cancelled") => {
-    setInfo("");
-    // Map 'caught' (UI) to 'executed' (DB)
-    const dbStatus = s === "caught" ? "executed" : s;
-    const patch: any = { status: dbStatus };
+  const handleStatusChange = async (id: string, newStatus: WarrantStatus) => {
+    try {
+      const updateData: any = { status: newStatus };
+      if (newStatus === "executed") {
+        updateData.updated_at = new Date().toISOString();
+      }
 
-    const { error } = await supabase.from("warrants").update(patch).eq("id", id);
-    if (error) { setInfo(error.message); return; }
-    await load();
+      const { error } = await supabase
+        .from("warrants")
+        .update(updateData)
+        .eq("id", id);
+
+      if (error) {
+        setError(`Ошибка обновления: ${error.message}`);
+        return;
+      }
+
+      await loadUserAndWarrants();
+      setError(""); // Очищаем ошибки
+    } catch (err) {
+      setError(`Ошибка: ${err instanceof Error ? err.message : "Неизвестная ошибка"}`);
+    }
   };
+
+  const getStatusColor = (status: WarrantStatus) => {
+    switch (status) {
+      case 'active': return 'bg-red-100 text-red-800';
+      case 'executed': return 'bg-green-100 text-green-800';
+      case 'expired': return 'bg-yellow-100 text-yellow-800';
+      case 'cancelled': return 'bg-gray-100 text-gray-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getStatusText = (status: WarrantStatus) => {
+    switch (status) {
+      case 'active': return 'Активен';
+      case 'executed': return 'Исполнен';
+      case 'expired': return 'Истек';
+      case 'cancelled': return 'Отменен';
+      default: return status;
+    }
+  };
+
+  const getWarrantTypeText = (type: WarrantType) => {
+    switch (type) {
+      case 'AS': return 'Арест и обыск';
+      case 'S': return 'Обыск';
+      case 'A': return 'Арест';
+      default: return type;
+    }
+  };
+
+  const getWarrantTypeColor = (type: WarrantType) => {
+    switch (type) {
+      case 'AS': return 'bg-purple-100 text-purple-800';
+      case 'S': return 'bg-blue-100 text-blue-800';
+      case 'A': return 'bg-red-100 text-red-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Загрузка...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 px-4 py-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Ордера</h1>
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            placeholder="Поиск по Static ID или ФИО"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            className="rounded-lg border px-3 py-2 text-sm"
-          />
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            className="rounded-lg border px-3 py-2 text-sm"
-          >
-            <option>Все статусы</option>
-            <option>Активные</option>
-            <option>Пойманные</option>
-            <option>Отмененные</option>
-          </select>
-          <button
-            onClick={load}
-            className="rounded-lg bg-gray-600 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700"
-          >
-            Обновить
-          </button>
+    <div className="min-h-screen bg-gray-50">
+      {/* Заголовок */}
+      <div className="bg-white shadow-sm border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-6">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Ордера</h1>
+              <p className="mt-2 text-sm text-gray-600">
+                Реестр всех ордеров на арест и обыск
+              </p>
+            </div>
+            {canCreate && (
+              <button
+                onClick={() => setShowCreateForm(true)}
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+              >
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Создать ордер
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
-      {info && <p className="text-sm text-red-600">{info}</p>}
-
-      {canIssue && (
-        <div className="rounded-2xl border bg-white p-5 shadow-sm">
-          <h2 className="mb-4 text-lg font-semibold">Новый ордер</h2>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <input
-              type="text"
-              placeholder="Static ID"
-              value={sid}
-              onChange={(e) => setSid(e.target.value)}
-              className="rounded-lg border px-3 py-2 text-sm"
-            />
-            <input
-              type="text"
-              placeholder="ФИО"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="rounded-lg border px-3 py-2 text-sm"
-            />
-            <input
-              type="number"
-              placeholder="Награда (опционально)"
-              value={reward || ""}
-              onChange={(e) => setReward(Number(e.target.value))}
-              className="rounded-lg border px-3 py-2 text-sm"
-            />
-            <input
-              type="text"
-              placeholder="Описание"
-              value={desc}
-              onChange={(e) => setDesc(e.target.value)}
-              className="rounded-lg border px-3 py-2 text-sm"
-            />
+      {/* Основной контент */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Сообщения об ошибках */}
+        {error && (
+          <div className="mb-6 bg-red-50 border border-red-200 rounded-md p-4">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-red-800">{error}</p>
+              </div>
+            </div>
           </div>
-          <button
-            onClick={createWanted}
-            className="mt-4 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-          >
-            Создать ордер
-          </button>
+        )}
+
+        {/* Список ордеров */}
+        {warrants.length === 0 ? (
+          <div className="text-center py-12">
+            <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <h3 className="mt-2 text-sm font-medium text-gray-900">Нет ордеров</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              Пока не создано ни одного ордера.
+            </p>
+          </div>
+        ) : (
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {warrants.map((warrant) => (
+              <div key={warrant.id} className="bg-white overflow-hidden shadow rounded-lg">
+                <div className="p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(warrant.status)}`}>
+                      {getStatusText(warrant.status)}
+                    </span>
+                    {user && (user.gov_role === "TECH_ADMIN" || warrant.issued_by === user.id) && (
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => handleDeleteWarrant(warrant.id)}
+                          className="text-red-600 hover:text-red-800"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="mb-3">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getWarrantTypeColor(warrant.warrant_type)}`}>
+                      {getWarrantTypeText(warrant.warrant_type)}
+                    </span>
+                  </div>
+                  
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">
+                    {warrant.target_name}
+                  </h3>
+                  
+                  <p className="text-sm text-gray-600 mb-4">
+                    {warrant.reason}
+                  </p>
+
+                  {warrant.articles && warrant.articles.length > 0 && (
+                    <div className="mb-4">
+                      <div className="text-sm text-gray-500 mb-1">Статьи:</div>
+                      <div className="flex flex-wrap gap-1">
+                        {warrant.articles.map((article, index) => (
+                          <span key={index} className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-800">
+                            {article}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div className="border-t pt-4 space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-500">Номер ордера:</span>
+                      <span className="text-gray-900 font-mono">{warrant.warrant_number}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-500">Выдан:</span>
+                      <span className="text-gray-900 font-medium">{warrant.issuer_name}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-500">Срок действия:</span>
+                      <span className="text-gray-900 font-medium">
+                        {new Date(warrant.valid_until).toLocaleDateString("ru-RU")}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm text-gray-500">
+                      <span>Дата создания:</span>
+                      <span>{new Date(warrant.created_at).toLocaleDateString("ru-RU")}</span>
+                    </div>
+                    {warrant.source_url && (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-500">Источник:</span>
+                        <a 
+                          href={warrant.source_url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:text-blue-800 underline"
+                        >
+                          Ссылка
+                        </a>
+                      </div>
+                    )}
+                    {warrant.notes && (
+                      <div className="flex items-start justify-between text-sm">
+                        <span className="text-gray-500">Примечания:</span>
+                        <span className="text-gray-900 text-right max-w-xs">{warrant.notes}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Кнопки управления статусом */}
+                  {user && (user.gov_role === "TECH_ADMIN" || warrant.issued_by === user.id) && warrant.status === "active" && (
+                    <div className="mt-4 flex space-x-2">
+                      <button
+                        onClick={() => handleStatusChange(warrant.id, "executed")}
+                        className="flex-1 px-3 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+                      >
+                        Отметить как исполненный
+                      </button>
+                      <button
+                        onClick={() => handleStatusChange(warrant.id, "cancelled")}
+                        className="px-3 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                      >
+                        Отменить
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Модальное окно создания ордера */}
+      {showCreateForm && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-gray-900">Создать новый ордер</h3>
+                <button
+                  onClick={() => setShowCreateForm(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              
+              <form onSubmit={(e) => { e.preventDefault(); handleCreateWarrant(); }}>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Имя и фамилия лица * 
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={createForm.target_name}
+                      onChange={(e) => setCreateForm({...createForm, target_name: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                      placeholder="ФИО подозреваемого"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Тип ордера *
+                    </label>
+                    <select
+                      value={createForm.warrant_type}
+                      onChange={(e) => setCreateForm({...createForm, warrant_type: e.target.value as WarrantType})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                    >
+                      <option value="A">Арест</option>
+                      <option value="S">Обыск</option>
+                      <option value="AS">Арест и обыск</option>
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Основание ордера *
+                    </label>
+                    <textarea
+                      required
+                      rows={3}
+                      value={createForm.reason}
+                      onChange={(e) => setCreateForm({...createForm, reason: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                      placeholder="Описание основания для выдачи ордера"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Статьи (опционально)
+                    </label>
+                    <input
+                      type="text"
+                      value={createForm.articles}
+                      onChange={(e) => setCreateForm({...createForm, articles: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                      placeholder="Статья 1, Статья 2, Статья 3"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Разделяйте статьи запятыми</p>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Срок действия * 
+                    </label>
+                    <input
+                      type="datetime-local"
+                      required
+                      value={createForm.valid_until}
+                      onChange={(e) => setCreateForm({...createForm, valid_until: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Ссылка на источник
+                    </label>
+                    <input
+                      type="url"
+                      value={createForm.source_url}
+                      onChange={(e) => setCreateForm({...createForm, source_url: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                      placeholder="https://example.com/document"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Примечания
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={createForm.notes}
+                      onChange={(e) => setCreateForm({...createForm, notes: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                      placeholder="Дополнительная информация"
+                    />
+                  </div>
+                </div>
+                
+                <div className="flex justify-end space-x-3 mt-6">
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateForm(false)}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!createForm.target_name || !createForm.reason || !createForm.valid_until}
+                    className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  >
+                    Создать ордер
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
         </div>
       )}
-
-      <div className="rounded-2xl border bg-white p-5 shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b text-left text-sm font-medium text-gray-500">
-                <th className="pb-3">Static ID</th>
-                <th className="pb-3">ФИО</th>
-                <th className="pb-3">Ведомство</th>
-                <th className="pb-3">Тип</th>
-                <th className="pb-3">Описание</th>
-                <th className="pb-3">Статус</th>
-                <th className="pb-3">Срок</th>
-                <th className="pb-3">Действия</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.id} className="border-b text-sm">
-                  <td className="py-3">{row.target_static_id}</td>
-                  <td className="py-3">{row.target_name}</td>
-                  <td className="py-3">{row.department || "Неизвестно"}</td>
-                  <td className="py-3">Ордер на арест</td>
-                  <td className="py-3">{row.reason}</td>
-                  <td className="py-3">
-                    <span className={`rounded-full px-2 py-1 text-xs font-medium ${
-                      row.status === "active" ? "bg-red-100 text-red-800" :
-                      row.status === "caught" ? "bg-green-100 text-green-800" :
-                      "bg-gray-100 text-gray-800"
-                    }`}>
-                      {row.status === "active" ? "Активен" :
-                       row.status === "caught" ? "Пойман" : "Отменен"}
-                    </span>
-                  </td>
-                  <td className="py-3">-</td>
-                  <td className="py-3">
-                    <div className="flex space-x-2">
-                      {row.status === "active" && (
-                        <>
-                          <button
-                            onClick={() => setWStatus(row.id, "caught")}
-                            className="rounded bg-green-100 px-2 py-1 text-xs text-green-700 hover:bg-green-200"
-                          >
-                            Пойман
-                          </button>
-                          <button
-                            onClick={() => setWStatus(row.id, "cancelled")}
-                            className="rounded bg-red-100 px-2 py-1 text-xs text-red-700 hover:bg-red-200"
-                          >
-                            Отменить
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {rows.length === 0 && (
-            <div className="py-8 text-center text-gray-500">
-              Нет записей
-            </div>
-          )}
-        </div>
-      </div>
     </div>
   );
 }
