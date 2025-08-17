@@ -7,15 +7,13 @@ import type { Profile } from "../../lib/supabase/client";
 type Inspection = {
   id: string;
   title: string;
-  inspector_id: string;
+  created_by: string;
   inspector_name: string;
   target_id: string;
+  target_name: string;
   inspection_type: string;
   status: string;
-  start_date: string;
-  end_date?: string;
-  findings?: string;
-  recommendations?: string;
+  description?: string;
   created_at: string;
   updated_at: string;
 };
@@ -30,11 +28,9 @@ export default function InspectionsPage() {
   const [createForm, setCreateForm] = useState({
     title: "",
     target_id: "",
+    target_name: "",
     inspection_type: "scheduled" as const,
-    start_date: "",
-    end_date: "",
-    findings: "",
-    recommendations: ""
+    description: ""
   });
 
   useEffect(() => {
@@ -67,7 +63,7 @@ export default function InspectionsPage() {
         .from("inspections")
         .select(`
           *,
-          inspector:profiles!inspections_inspector_id_fkey(full_name)
+          inspector:profiles!inspections_created_by_fkey(full_name)
         `)
         .order("created_at", { ascending: false });
 
@@ -96,12 +92,10 @@ export default function InspectionsPage() {
         .insert({
           title: createForm.title,
           target_id: createForm.target_id,
+          target_name: createForm.target_name,
           inspection_type: createForm.inspection_type,
-          start_date: createForm.start_date,
-          end_date: createForm.end_date || null,
-          findings: createForm.findings || null,
-          recommendations: createForm.recommendations || null,
-          inspector_id: user.id
+          description: createForm.description || null,
+          created_by: user.id
         });
 
       if (error) {
@@ -114,11 +108,9 @@ export default function InspectionsPage() {
       setCreateForm({ 
         title: "", 
         target_id: "", 
+        target_name: "",
         inspection_type: "scheduled", 
-        start_date: "", 
-        end_date: "", 
-        findings: "", 
-        recommendations: "" 
+        description: ""
       });
       await loadUserAndInspections();
       setError(""); // Очищаем ошибки
@@ -253,7 +245,7 @@ export default function InspectionsPage() {
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(inspection.status)}`}>
                       {getStatusText(inspection.status)}
                     </span>
-                    {user && (user.gov_role === "TECH_ADMIN" || inspection.inspector_id === user.id) && (
+                    {user && (user.gov_role === "TECH_ADMIN" || inspection.created_by === user.id) && (
                       <div className="flex space-x-2">
                         <button
                           onClick={() => handleDeleteInspection(inspection.id)}
@@ -279,24 +271,15 @@ export default function InspectionsPage() {
                   
                   <div className="mb-4">
                     <p className="text-sm text-gray-600">
-                      <span className="font-medium">Объект:</span> {inspection.target_entity}
+                      <span className="font-medium">Объект:</span> {inspection.target_name}
                     </p>
                   </div>
                   
-                  {inspection.findings && (
+                  {inspection.description && (
                     <div className="mb-4">
-                      <h4 className="text-sm font-medium text-gray-700 mb-1">Результаты:</h4>
+                      <h4 className="text-sm font-medium text-gray-700 mb-1">Описание:</h4>
                       <p className="text-sm text-gray-600 line-clamp-3">
-                        {inspection.findings}
-                      </p>
-                    </div>
-                  )}
-                  
-                  {inspection.recommendations && (
-                    <div className="mb-4">
-                      <h4 className="text-sm font-medium text-gray-700 mb-1">Рекомендации:</h4>
-                      <p className="text-sm text-gray-600 line-clamp-3">
-                        {inspection.recommendations}
+                        {inspection.description}
                       </p>
                     </div>
                   )}
@@ -306,16 +289,6 @@ export default function InspectionsPage() {
                       <span className="text-gray-500">Инспектор:</span>
                       <span className="text-gray-900 font-medium">{inspection.inspector_name}</span>
                     </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-500">Начало:</span>
-                      <span className="text-gray-900 font-medium">{new Date(inspection.start_date).toLocaleDateString("ru-RU")}</span>
-                    </div>
-                    {inspection.end_date && (
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-500">Окончание:</span>
-                        <span className="text-gray-900 font-medium">{new Date(inspection.end_date).toLocaleDateString("ru-RU")}</span>
-                      </div>
-                    )}
                     <div className="flex items-center justify-between text-sm text-gray-500">
                       <span>Дата создания:</span>
                       <span>{new Date(inspection.created_at).toLocaleDateString("ru-RU")}</span>
@@ -371,6 +344,20 @@ export default function InspectionsPage() {
                       value={createForm.target_id}
                       onChange={(e) => setCreateForm({...createForm, target_id: e.target.value})}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                      placeholder="ID объекта проверки"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Название объекта проверки *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={createForm.target_name}
+                      onChange={(e) => setCreateForm({...createForm, target_name: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                       placeholder="Название организации или объекта"
                     />
                   </div>
@@ -392,52 +379,14 @@ export default function InspectionsPage() {
                   
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Дата начала *
-                    </label>
-                    <input
-                      type="datetime-local"
-                      required
-                      value={createForm.start_date}
-                      onChange={(e) => setCreateForm({...createForm, start_date: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Дата окончания
-                    </label>
-                    <input
-                      type="datetime-local"
-                      value={createForm.end_date}
-                      onChange={(e) => setCreateForm({...createForm, end_date: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Результаты проверки
+                      Описание проверки
                     </label>
                     <textarea
                       rows={4}
-                      value={createForm.findings}
-                      onChange={(e) => setCreateForm({...createForm, findings: e.target.value})}
+                      value={createForm.description}
+                      onChange={(e) => setCreateForm({...createForm, description: e.target.value})}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                      placeholder="Результаты и выводы проверки"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Рекомендации
-                    </label>
-                    <textarea
-                      rows={4}
-                      value={createForm.recommendations}
-                      onChange={(e) => setCreateForm({...createForm, recommendations: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                      placeholder="Рекомендации по устранению нарушений"
+                      placeholder="Описание проверки и её цели"
                     />
                   </div>
                 </div>
@@ -452,7 +401,7 @@ export default function InspectionsPage() {
                   </button>
                   <button
                     type="submit"
-                    disabled={!createForm.title || !createForm.target_entity || !createForm.start_date}
+                    disabled={!createForm.title || !createForm.target_id || !createForm.target_name || !createForm.inspection_type}
                     className="px-4 py-2 text-sm font-medium text-white bg-purple-600 border border-transparent rounded-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
                   >
                     Создать проверку

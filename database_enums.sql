@@ -289,7 +289,24 @@ BEGIN
 END $$;
 
 -- =====================================================
--- 17. ПРОВЕРКА СОЗДАНИЯ ВСЕХ ENUM'ОВ
+-- 17. ENUM'Ы ДЛЯ СТАТУСОВ ЗАСЕДАНИЙ СУДА
+-- =====================================================
+
+-- Создаем ENUM для статусов заседаний суда
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'court_session_status_enum') THEN
+        CREATE TYPE court_session_status_enum AS ENUM (
+            'scheduled',
+            'in_progress',
+            'completed',
+            'cancelled'
+        );
+    END IF;
+END $$;
+
+-- =====================================================
+-- 18. ПРОВЕРКА СОЗДАНИЯ ВСЕХ ENUM'ОВ
 -- =====================================================
 
 -- Выводим список всех созданных ENUM'ов
@@ -314,7 +331,8 @@ WHERE t.typname IN (
     'inspection_status_enum',
     'case_status_enum',
     'lawyer_status_enum',
-    'act_status_enum'
+    'act_status_enum',
+    'court_session_status_enum'
 )
 ORDER BY t.typname, e.enumsortorder;
 

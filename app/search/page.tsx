@@ -65,23 +65,21 @@ export default function SearchPage() {
       if (selectedTypes.length === 0 || selectedTypes.includes("wanted")) {
         const { data: warrants } = await supabase
           .from("warrants")
-          .select("id, target_name, warrant_number, reason, created_at, status");
+          .select("id, target_name, target_static_id, warrant_number, reason, created_at, status")
+          .or(`target_name.ilike.%${searchQuery}%,target_static_id.ilike.%${searchQuery}%,warrant_number.ilike.%${searchQuery}%`);
 
         if (warrants) {
           warrants.forEach(warrant => {
-            if (warrant.target_name.toLowerCase().includes(searchQuery) || 
-                warrant.warrant_number.toLowerCase().includes(searchQuery)) {
-              allResults.push({
-                id: warrant.id,
-                type: "wanted",
-                title: `Ордер: ${warrant.reason}`,
-                staticID: warrant.warrant_number,
-                nickname: warrant.target_name,
-                date: new Date(warrant.created_at).toLocaleDateString("ru-RU"),
-                status: warrant.status === "active" ? "Активен" : warrant.status === "executed" ? "Исполнен" : "Отменен",
-                url: `/wanted/${warrant.id}`
-              });
-            }
+            allResults.push({
+              id: warrant.id,
+              type: "wanted",
+              title: `Ордер: ${warrant.reason}`,
+              staticID: warrant.target_static_id || warrant.warrant_number,
+              nickname: warrant.target_name,
+              date: new Date(warrant.created_at).toLocaleDateString("ru-RU"),
+              status: warrant.status === "active" ? "Активен" : warrant.status === "executed" ? "Исполнен" : "Отменен",
+              url: `/wanted/${warrant.id}`
+            });
           });
         }
       }
@@ -90,23 +88,21 @@ export default function SearchPage() {
       if (selectedTypes.length === 0 || selectedTypes.includes("act")) {
         const { data: courtActs } = await supabase
           .from("court_acts")
-          .select("id, title, content, created_at, status");
+          .select("id, title, content, created_at, status")
+          .or(`title.ilike.%${searchQuery}%,content.ilike.%${searchQuery}%`);
 
         if (courtActs) {
           courtActs.forEach(act => {
-            if (act.title.toLowerCase().includes(searchQuery) || 
-                act.content.toLowerCase().includes(searchQuery)) {
-              allResults.push({
-                id: act.id,
-                type: "act",
-                title: act.title,
-                staticID: act.id.substring(0, 8),
-                nickname: "Судебный акт",
-                date: new Date(act.created_at).toLocaleDateString("ru-RU"),
-                status: act.status === "active" ? "Активен" : "Отменен",
-                url: `/acts-court/${act.id}`
-              });
-            }
+            allResults.push({
+              id: act.id,
+              type: "act",
+              title: act.title,
+              staticID: act.id.substring(0, 8),
+              nickname: "Судебный акт",
+              date: new Date(act.created_at).toLocaleDateString("ru-RU"),
+              status: act.status === "active" ? "Активен" : "Отменен",
+              url: `/acts-court/${act.id}`
+            });
           });
         }
       }
@@ -115,23 +111,21 @@ export default function SearchPage() {
       if (selectedTypes.length === 0 || selectedTypes.includes("government_act")) {
         const { data: govActs } = await supabase
           .from("gov_acts")
-          .select("id, title, content, created_at, status");
+          .select("id, title, content, created_at, status")
+          .or(`title.ilike.%${searchQuery}%,content.ilike.%${searchQuery}%`);
 
         if (govActs) {
           govActs.forEach(act => {
-            if (act.title.toLowerCase().includes(searchQuery) || 
-                act.content.toLowerCase().includes(searchQuery)) {
-              allResults.push({
-                id: act.id,
-                type: "government_act",
-                title: act.title,
-                staticID: act.id.substring(0, 8),
-                nickname: "Акт правительства",
-                date: new Date(act.created_at).toLocaleDateString("ru-RU"),
-                status: act.status === "active" ? "Активен" : "Отменен",
-                url: `/acts-government/${act.id}`
-              });
-            }
+            allResults.push({
+              id: act.id,
+              type: "government_act",
+              title: act.title,
+              staticID: act.id.substring(0, 8),
+              nickname: "Акт правительства",
+              date: new Date(act.created_at).toLocaleDateString("ru-RU"),
+              status: act.status === "active" ? "Активен" : "Отменен",
+              url: `/acts-government/${act.id}`
+            });
           });
         }
       }

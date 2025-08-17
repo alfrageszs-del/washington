@@ -264,7 +264,8 @@ export type CourtSession = {
 export type Lawyer = {
   id: string;
   user_id: string;
-  license_number: string;
+  certificate_number: string;
+  years_in_government: number;
   specialization: string;
   status: string;
   created_at: string;
@@ -305,7 +306,9 @@ export type Fine = {
   status: FineStatus;
   issued_at?: string;
   paid_at?: string | null;
+  created_at: string;
   updated_at?: string;
+  issuer_name?: string; // Добавляем поле для имени издателя
 };
 
 export const FineStatusLabel: Record<FineStatus, string> = {

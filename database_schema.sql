@@ -115,6 +115,7 @@ CREATE TABLE warrants (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     warrant_number TEXT UNIQUE NOT NULL,
     target_name TEXT NOT NULL,
+    target_static_id TEXT,
     warrant_type TEXT CHECK (warrant_type IN ('AS', 'S', 'A')) NOT NULL,
     reason TEXT NOT NULL,
     articles TEXT[] NOT NULL,
@@ -162,7 +163,7 @@ CREATE TABLE court_sessions (
     session_date TIMESTAMP WITH TIME ZONE NOT NULL,
     title TEXT NOT NULL,
     description TEXT,
-    status TEXT NOT NULL,
+    status court_session_status_enum NOT NULL DEFAULT 'scheduled',
     created_by UUID REFERENCES profiles(id) ON DELETE CASCADE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -174,7 +175,8 @@ CREATE TABLE court_sessions (
 CREATE TABLE lawyers (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
-    license_number TEXT UNIQUE NOT NULL,
+    certificate_number TEXT UNIQUE NOT NULL,
+    years_in_government INTEGER NOT NULL DEFAULT 0,
     specialization TEXT,
     status TEXT CHECK (status IN ('ACTIVE', 'SUSPENDED', 'REVOKED')) DEFAULT 'ACTIVE',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),

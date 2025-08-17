@@ -7,7 +7,8 @@ import type { Profile } from "../../lib/supabase/client";
 interface Lawyer {
   id: string;
   user_id: string;
-  license_number: string;
+  certificate_number: string;
+  years_in_government: number;
   specialization?: string;
   status: string;
   created_at: string;
@@ -46,13 +47,15 @@ export default function LawyersPage() {
   const [showAddLawyerModal, setShowAddLawyerModal] = useState(false);
   const [addLawyerForm, setAddLawyerForm] = useState({
     certificate_number: "",
-    years_in_government: ""
+    years_in_government: "",
+    specialization: ""
   });
 
   // Форма запроса на адвоката
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [requestForm, setRequestForm] = useState({
-    description: ""
+    description: "",
+    request_type: "LICENSE"
   });
 
   // Форма добавления договора
@@ -137,7 +140,8 @@ export default function LawyersPage() {
         .from("lawyers")
         .insert({
           user_id: user.id,
-          license_number: addLawyerForm.license_number,
+          certificate_number: addLawyerForm.certificate_number,
+          years_in_government: parseInt(addLawyerForm.years_in_government),
           specialization: addLawyerForm.specialization || null,
           status: "ACTIVE"
         });
@@ -145,7 +149,8 @@ export default function LawyersPage() {
       if (error) throw error;
 
       setAddLawyerForm({
-        license_number: "",
+        certificate_number: "",
+        years_in_government: "",
         specialization: ""
       });
       setShowAddLawyerModal(false);
@@ -174,12 +179,46 @@ export default function LawyersPage() {
 
       if (error) throw error;
 
-      setRequestForm({ request_type: "LICENSE" });
+      setRequestForm({ request_type: "LICENSE", description: "" });
       setShowRequestModal(false);
       await loadData();
     } catch (error) {
       console.error("Ошибка при создании запроса:", error);
       setInfo("Ошибка при создании запроса");
+    }
+  };
+
+  const handleAddContract = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userProfile) return;
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Пользователь не авторизован");
+
+      const { error } = await supabase
+        .from("lawyer_contracts")
+        .insert({
+          lawyer_id: userProfile.id, // ID адвоката
+          client_id: addContractForm.client_static_id, // ID клиента
+          case_id: null, // Пока не привязываем к делу
+          status: "ACTIVE"
+        });
+
+      if (error) throw error;
+
+      setAddContractForm({
+        client_name: "",
+        client_static_id: "",
+        trustee_name: "",
+        trustee_static_id: "",
+        contract_url: ""
+      });
+      setShowAddContractModal(false);
+      await loadData();
+    } catch (error) {
+      console.error("Ошибка при добавлении договора:", error);
+      setInfo("Ошибка при добавлении договора");
     }
   };
 
@@ -320,7 +359,10 @@ export default function LawyersPage() {
                       ID пользователя
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Номер лицензии
+                      Номер удостоверения
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Срок работы (годы)
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Специализация
@@ -340,7 +382,10 @@ export default function LawyersPage() {
                         <div className="text-sm font-medium text-gray-900">{lawyer.user_id}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">{lawyer.license_number}</div>
+                        <div className="text-sm font-medium text-gray-900">{lawyer.certificate_number}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">{lawyer.years_in_government}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-900">
@@ -521,6 +566,18 @@ export default function LawyersPage() {
                       placeholder="Количество лет"
                     />
                   </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Специализация
+                    </label>
+                    <input
+                      type="text"
+                      value={addLawyerForm.specialization}
+                      onChange={(e) => setAddLawyerForm({...addLawyerForm, specialization: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Например, уголовное право"
+                    />
+                  </div>
                 </div>
                 <div className="flex justify-end space-x-3 mt-6">
                   <button
@@ -553,6 +610,21 @@ export default function LawyersPage() {
                     <p className="text-sm text-blue-800">
                       <strong>Запрашивающий:</strong> {userProfile?.nickname} ({userProfile?.static_id})
                     </p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Тип запроса *
+                    </label>
+                    <select
+                      value={requestForm.request_type}
+                      onChange={(e) => setRequestForm({...requestForm, request_type: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      required
+                    >
+                      <option value="LICENSE">Лицензия</option>
+                      <option value="SPECIALIZATION">Специализация</option>
+                      <option value="STATUS_CHANGE">Изменение статуса</option>
+                    </select>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
