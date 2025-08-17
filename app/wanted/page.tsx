@@ -73,13 +73,18 @@ export default function WantedPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setInfo("Вы не авторизованы"); return; }
 
+    // Insert into warrants with required schema fields
+    const validUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     const { error } = await supabase.from("warrants").insert([{
-      target_static_id: sid.trim(),
+      warrant_number: `WNT-${Date.now()}`,
       target_name: name.trim(),
-      reason: desc.trim(),
-      reward: reward > 0 ? reward : null,
-      department: me?.faction || "Неизвестно",
+      warrant_type: "A",
+      reason: `${desc.trim()}${sid.trim() ? ` (StaticID: ${sid.trim()})` : ""}${reward && reward > 0 ? ` [Награда: ${reward}]` : ""}`,
+      articles: ["WANTED"],
+      issued_by: user.id,
       status: "active",
+      valid_until: validUntil,
+      notes: me?.faction ? `Ведомство: ${me.faction}` : null,
     }]);
     if (error) { setInfo(error.message); return; }
 

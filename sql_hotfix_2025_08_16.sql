@@ -82,3 +82,53 @@ BEGIN
     END IF;
 END $$;
 
+-- 5) Add optional source_url to fines (used by UI)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns WHERE table_name='fines' AND column_name='source_url'
+    ) THEN
+        ALTER TABLE fines ADD COLUMN source_url TEXT;
+    END IF;
+END $$;
+
+-- 6) Extend inspections to support richer UI fields
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns WHERE table_name='inspections' AND column_name='inspector_id'
+    ) THEN
+        ALTER TABLE inspections ADD COLUMN inspector_id UUID REFERENCES profiles(id);
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns WHERE table_name='inspections' AND column_name='title'
+    ) THEN
+        ALTER TABLE inspections ADD COLUMN title TEXT;
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns WHERE table_name='inspections' AND column_name='target_entity'
+    ) THEN
+        ALTER TABLE inspections ADD COLUMN target_entity TEXT;
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns WHERE table_name='inspections' AND column_name='start_date'
+    ) THEN
+        ALTER TABLE inspections ADD COLUMN start_date TIMESTAMPTZ;
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns WHERE table_name='inspections' AND column_name='end_date'
+    ) THEN
+        ALTER TABLE inspections ADD COLUMN end_date TIMESTAMPTZ;
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns WHERE table_name='inspections' AND column_name='findings'
+    ) THEN
+        ALTER TABLE inspections ADD COLUMN findings TEXT;
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns WHERE table_name='inspections' AND column_name='recommendations'
+    ) THEN
+        ALTER TABLE inspections ADD COLUMN recommendations TEXT;
+    END IF;
+END $$;
+
