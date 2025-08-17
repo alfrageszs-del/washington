@@ -9,7 +9,7 @@ type Inspection = {
   title: string;
   inspector_id: string;
   inspector_name: string;
-  target_entity: string;
+  target_id: string;
   inspection_type: string;
   status: string;
   start_date: string;
@@ -29,7 +29,7 @@ export default function InspectionsPage() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createForm, setCreateForm] = useState({
     title: "",
-    target_entity: "",
+    target_id: "",
     inspection_type: "scheduled" as const,
     start_date: "",
     end_date: "",
@@ -55,9 +55,9 @@ export default function InspectionsPage() {
         if (profile) {
           setUser(profile);
           setCanCreate(
-            profile.gov_role === "TECH_ADMIN" || 
-            profile.gov_role === "ATTORNEY_GENERAL" || 
-            profile.gov_role === "CHIEF_JUSTICE"
+            profile.faction === "EMS" && profile.gov_role === "LEADER" ||
+            profile.faction === "GOV" ||
+            profile.gov_role === "TECH_ADMIN"
           );
         }
       }
@@ -95,7 +95,7 @@ export default function InspectionsPage() {
         .from("inspections")
         .insert({
           title: createForm.title,
-          target_entity: createForm.target_entity,
+          target_id: createForm.target_id,
           inspection_type: createForm.inspection_type,
           start_date: createForm.start_date,
           end_date: createForm.end_date || null,
@@ -113,7 +113,7 @@ export default function InspectionsPage() {
       setShowCreateForm(false);
       setCreateForm({ 
         title: "", 
-        target_entity: "", 
+        target_id: "", 
         inspection_type: "scheduled", 
         start_date: "", 
         end_date: "", 
@@ -368,8 +368,8 @@ export default function InspectionsPage() {
                     <input
                       type="text"
                       required
-                      value={createForm.target_entity}
-                      onChange={(e) => setCreateForm({...createForm, target_entity: e.target.value})}
+                      value={createForm.target_id}
+                      onChange={(e) => setCreateForm({...createForm, target_id: e.target.value})}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                       placeholder="Название организации или объекта"
                     />

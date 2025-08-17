@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { supabase } from "../../lib/supabase/client";
 
 interface SearchResult {
   id: string;
@@ -31,34 +32,119 @@ export default function SearchPage() {
     if (!query.trim()) return;
     
     setIsLoading(true);
-    // Здесь будет API запрос к Supabase
-    // Пока используем моковые данные
-    setTimeout(() => {
-      const mockResults: SearchResult[] = [
-        {
-          id: "1",
-          type: "act",
-          title: "Постановление о возбуждении уголовного дела",
-          staticID: "12345",
-          nickname: "John_Doe",
-          date: "2024-01-15",
-          status: "Активно",
-          url: "/acts-court/1"
-        },
-        {
-          id: "2",
-          type: "fine",
-          title: "Штраф за нарушение ПДД",
-          staticID: "12345",
-          nickname: "John_Doe",
-          date: "2024-01-14",
-          status: "Оплачен",
-          url: "/fines/2"
+    setResults([]);
+
+    try {
+      const searchQuery = query.trim().toLowerCase();
+      const allResults: SearchResult[] = [];
+
+      // Поиск по штрафам
+      if (selectedTypes.length === 0 || selectedTypes.includes("fine")) {
+        const { data: fines } = await supabase
+          .from("fines")
+          .select("id, offender_static_id, offender_name, reason, created_at, status")
+          .or(`offender_static_id.ilike.%${searchQuery}%,offender_name.ilike.%${searchQuery}%`);
+
+        if (fines) {
+          fines.forEach(fine => {
+            allResults.push({
+              id: fine.id,
+              type: "fine",
+              title: `Штраф: ${fine.reason}`,
+              staticID: fine.offender_static_id,
+              nickname: fine.offender_name,
+              date: new Date(fine.created_at).toLocaleDateString("ru-RU"),
+              status: fine.status === "UNPAID" ? "Не оплачен" : fine.status === "PAID" ? "Оплачен" : "Отменен",
+              url: `/fines/${fine.id}`
+            });
+          });
         }
-      ];
-      setResults(mockResults);
+      }
+
+      // Поиск по ордерам на арест
+      if (selectedTypes.length === 0 || selectedTypes.includes("wanted")) {
+        const { data: warrants } = await supabase
+          .from("warrants")
+          .select("id, target_name, warrant_number, reason, created_at, status");
+
+        if (warrants) {
+          warrants.forEach(warrant => {
+            if (warrant.target_name.toLowerCase().includes(searchQuery) || 
+                warrant.warrant_number.toLowerCase().includes(searchQuery)) {
+              allResults.push({
+                id: warrant.id,
+                type: "wanted",
+                title: `Ордер: ${warrant.reason}`,
+                staticID: warrant.warrant_number,
+                nickname: warrant.target_name,
+                date: new Date(warrant.created_at).toLocaleDateString("ru-RU"),
+                status: warrant.status === "active" ? "Активен" : warrant.status === "executed" ? "Исполнен" : "Отменен",
+                url: `/wanted/${warrant.id}`
+              });
+            }
+          });
+        }
+      }
+
+      // Поиск по судебным актам
+      if (selectedTypes.length === 0 || selectedTypes.includes("act")) {
+        const { data: courtActs } = await supabase
+          .from("court_acts")
+          .select("id, title, content, created_at, status");
+
+        if (courtActs) {
+          courtActs.forEach(act => {
+            if (act.title.toLowerCase().includes(searchQuery) || 
+                act.content.toLowerCase().includes(searchQuery)) {
+              allResults.push({
+                id: act.id,
+                type: "act",
+                title: act.title,
+                staticID: act.id.substring(0, 8),
+                nickname: "Судебный акт",
+                date: new Date(act.created_at).toLocaleDateString("ru-RU"),
+                status: act.status === "active" ? "Активен" : "Отменен",
+                url: `/acts-court/${act.id}`
+              });
+            }
+          });
+        }
+      }
+
+      // Поиск по актам правительства
+      if (selectedTypes.length === 0 || selectedTypes.includes("government_act")) {
+        const { data: govActs } = await supabase
+          .from("gov_acts")
+          .select("id, title, content, created_at, status");
+
+        if (govActs) {
+          govActs.forEach(act => {
+            if (act.title.toLowerCase().includes(searchQuery) || 
+                act.content.toLowerCase().includes(searchQuery)) {
+              allResults.push({
+                id: act.id,
+                type: "government_act",
+                title: act.title,
+                staticID: act.id.substring(0, 8),
+                nickname: "Акт правительства",
+                date: new Date(act.created_at).toLocaleDateString("ru-RU"),
+                status: act.status === "active" ? "Активен" : "Отменен",
+                url: `/acts-government/${act.id}`
+              });
+            }
+          });
+        }
+      }
+
+      // Сортируем по дате (новые сначала)
+      allResults.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      setResults(allResults);
+
+    } catch (error) {
+      console.error("Ошибка поиска:", error);
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
   const getTypeColor = (type: string) => {

@@ -3,17 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { supabase } from "../../lib/supabase/client";
-
-interface Notification {
-  id: string;
-  type: "document" | "court" | "fine" | "wanted" | "system" | "role_change";
-  title: string;
-  message: string;
-  created_at: string;
-  is_read: boolean;
-  url?: string;
-  priority: "low" | "medium" | "high";
-}
+import type { Notification, NotificationType, NotificationPriority, NotificationTypeLabel, NotificationPriorityLabel } from "../../lib/supabase/client";
 
 export default function NotificationsPage() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -23,12 +13,12 @@ export default function NotificationsPage() {
   const [info, setInfo] = useState("");
 
   const notificationTypes = [
-    { id: "document", label: "Документы", color: "bg-blue-100 text-blue-800" },
-    { id: "court", label: "Суд", color: "bg-purple-100 text-purple-800" },
-    { id: "fine", label: "Штрафы", color: "bg-yellow-100 text-yellow-800" },
-    { id: "wanted", label: "Ордера на арест", color: "bg-red-100 text-red-800" },
-    { id: "system", label: "Система", color: "bg-gray-100 text-gray-800" },
-    { id: "role_change", label: "Изменение роли", color: "bg-green-100 text-green-800" },
+    { id: "document" as NotificationType, label: NotificationTypeLabel.document, color: "bg-blue-100 text-blue-800" },
+    { id: "court" as NotificationType, label: NotificationTypeLabel.court, color: "bg-purple-100 text-purple-800" },
+    { id: "fine" as NotificationType, label: NotificationTypeLabel.fine, color: "bg-yellow-100 text-yellow-800" },
+    { id: "wanted" as NotificationType, label: NotificationTypeLabel.wanted, color: "bg-red-100 text-red-800" },
+    { id: "system" as NotificationType, label: NotificationTypeLabel.system, color: "bg-gray-100 text-gray-800" },
+    { id: "role_change" as NotificationType, label: NotificationTypeLabel.role_change, color: "bg-green-100 text-green-800" },
   ];
 
   useEffect(() => {
@@ -136,12 +126,11 @@ export default function NotificationsPage() {
     return notifType?.color || "bg-gray-100 text-gray-800";
   };
 
-  const getTypeLabel = (type: string) => {
-    const notifType = notificationTypes.find(t => t.id === type);
-    return notifType?.label || "Уведомление";
+  const getTypeLabel = (type: NotificationType) => {
+    return NotificationTypeLabel[type] || "Уведомление";
   };
 
-  const getPriorityColor = (priority: string) => {
+  const getPriorityColor = (priority: NotificationPriority) => {
     switch (priority) {
       case "high": return "border-l-red-500";
       case "medium": return "border-l-yellow-500";

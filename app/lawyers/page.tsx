@@ -45,14 +45,24 @@ export default function LawyersPage() {
   // Форма добавления адвоката
   const [showAddLawyerModal, setShowAddLawyerModal] = useState(false);
   const [addLawyerForm, setAddLawyerForm] = useState({
-    license_number: "",
-    specialization: ""
+    certificate_number: "",
+    years_in_government: ""
   });
 
   // Форма запроса на адвоката
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [requestForm, setRequestForm] = useState({
-    request_type: "LICENSE"
+    description: ""
+  });
+
+  // Форма добавления договора
+  const [showAddContractModal, setShowAddContractModal] = useState(false);
+  const [addContractForm, setAddContractForm] = useState({
+    client_name: "",
+    client_static_id: "",
+    trustee_name: "",
+    trustee_static_id: "",
+    contract_url: ""
   });
 
   useEffect(() => {
@@ -245,6 +255,12 @@ export default function LawyersPage() {
                 Добавить адвоката
               </button>
             )}
+            <button
+              onClick={() => setShowAddContractModal(true)}
+              className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors"
+            >
+              Добавить договор
+            </button>
           </div>
         </div>
 
@@ -479,26 +495,30 @@ export default function LawyersPage() {
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Номер лицензии
+                      Номер удостоверения *
                     </label>
                     <input
                       type="text"
-                      value={addLawyerForm.license_number}
-                      onChange={(e) => setAddLawyerForm({...addLawyerForm, license_number: e.target.value})}
+                      value={addLawyerForm.certificate_number}
+                      onChange={(e) => setAddLawyerForm({...addLawyerForm, certificate_number: e.target.value})}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       required
+                      placeholder="Номер удостоверения адвоката"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Специализация
+                      Срок работы в правительстве (годы) *
                     </label>
                     <input
-                      type="text"
-                      value={addLawyerForm.specialization}
-                      onChange={(e) => setAddLawyerForm({...addLawyerForm, specialization: e.target.value})}
+                      type="number"
+                      min="0"
+                      max="50"
+                      value={addLawyerForm.years_in_government}
+                      onChange={(e) => setAddLawyerForm({...addLawyerForm, years_in_government: e.target.value})}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="Уголовное право, Гражданское право"
+                      required
+                      placeholder="Количество лет"
                     />
                   </div>
                 </div>
@@ -529,19 +549,23 @@ export default function LawyersPage() {
               <h3 className="text-lg font-semibold mb-4">Запросить адвоката</h3>
               <form onSubmit={handleRequestSubmit}>
                 <div className="space-y-4">
+                  <div className="bg-blue-50 p-3 rounded-md">
+                    <p className="text-sm text-blue-800">
+                      <strong>Запрашивающий:</strong> {userProfile?.nickname} ({userProfile?.static_id})
+                    </p>
+                  </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Тип запроса
+                      Описание потребности *
                     </label>
-                    <select
-                      value={requestForm.request_type}
-                      onChange={(e) => setRequestForm({...requestForm, request_type: e.target.value})}
+                    <textarea
+                      rows={4}
+                      value={requestForm.description}
+                      onChange={(e) => setRequestForm({...requestForm, description: e.target.value})}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      <option value="LICENSE">Лицензия</option>
-                      <option value="SPECIALIZATION">Специализация</option>
-                      <option value="STATUS_CHANGE">Изменение статуса</option>
-                    </select>
+                      required
+                      placeholder="Опишите, для чего вам нужен адвокат..."
+                    />
                   </div>
                 </div>
                 <div className="flex justify-end space-x-3 mt-6">
@@ -557,6 +581,98 @@ export default function LawyersPage() {
                     className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                   >
                     Отправить запрос
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Модальное окно добавления договора */}
+        {showAddContractModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md">
+              <h3 className="text-lg font-semibold mb-4">Добавить договор</h3>
+              <form onSubmit={handleAddContract}>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Имя доверителя *
+                    </label>
+                    <input
+                      type="text"
+                      value={addContractForm.client_name}
+                      onChange={(e) => setAddContractForm({...addContractForm, client_name: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      required
+                      placeholder="ФИО доверителя"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Static ID доверителя *
+                    </label>
+                    <input
+                      type="text"
+                      value={addContractForm.client_static_id}
+                      onChange={(e) => setAddContractForm({...addContractForm, client_static_id: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      required
+                      placeholder="Static ID доверителя"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Имя доверенного *
+                    </label>
+                    <input
+                      type="text"
+                      value={addContractForm.trustee_name}
+                      onChange={(e) => setAddContractForm({...addContractForm, trustee_name: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      required
+                      placeholder="ФИО доверенного"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Static ID доверенного *
+                    </label>
+                    <input
+                      type="text"
+                      value={addContractForm.trustee_static_id}
+                      onChange={(e) => setAddContractForm({...addContractForm, trustee_static_id: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      required
+                      placeholder="Static ID доверенного"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Ссылка на копию договора
+                    </label>
+                    <input
+                      type="url"
+                      value={addContractForm.contract_url}
+                      onChange={(e) => setAddContractForm({...addContractForm, contract_url: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="https://example.com/contract.pdf"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end space-x-3 mt-6">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddContractModal(false)}
+                    className="px-4 py-2 text-gray-600 hover:text-gray-800"
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700"
+                  >
+                    Добавить договор
                   </button>
                 </div>
               </form>

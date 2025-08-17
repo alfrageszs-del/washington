@@ -39,11 +39,9 @@ export default function FinesPage() {
         if (profile) {
           setUser(profile);
           setCanCreate(
-            profile.gov_role === "TECH_ADMIN" || 
-            profile.gov_role === "ATTORNEY_GENERAL" || 
-            profile.gov_role === "CHIEF_JUSTICE" ||
-            profile.gov_role === "PROSECUTOR" ||
-            profile.gov_role === "JUDGE"
+            profile.faction === "GOV" || 
+            profile.faction === "COURT" ||
+            profile.gov_role === "TECH_ADMIN"
           );
         }
       }

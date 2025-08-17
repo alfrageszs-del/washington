@@ -14,6 +14,7 @@ export default function WantedPage() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createForm, setCreateForm] = useState({
     target_name: "",
+    target_static_id: "",
     warrant_type: "A" as WarrantType,
     reason: "",
     articles: "",
@@ -40,11 +41,9 @@ export default function WantedPage() {
         if (profile) {
           setUser(profile);
           setCanCreate(
-            profile.gov_role === "TECH_ADMIN" || 
-            profile.gov_role === "ATTORNEY_GENERAL" || 
-            profile.gov_role === "CHIEF_JUSTICE" ||
-            profile.gov_role === "PROSECUTOR" ||
-            profile.gov_role === "JUDGE"
+            profile.faction === "GOV" || 
+            profile.faction === "COURT" ||
+            profile.gov_role === "TECH_ADMIN"
           );
         }
       }
@@ -89,6 +88,7 @@ export default function WantedPage() {
         .insert({
           warrant_number: `WNT-${Date.now()}`,
           target_name: createForm.target_name,
+          target_static_id: createForm.target_static_id,
           warrant_type: createForm.warrant_type,
           reason: createForm.reason,
           articles: articlesArray,
@@ -108,6 +108,7 @@ export default function WantedPage() {
       setShowCreateForm(false);
       setCreateForm({ 
         target_name: "", 
+        target_static_id: "",
         warrant_type: "A", 
         reason: "", 
         articles: "", 
@@ -416,6 +417,20 @@ export default function WantedPage() {
                       onChange={(e) => setCreateForm({...createForm, target_name: e.target.value})}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
                       placeholder="ФИО подозреваемого"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Static ID лица *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={createForm.target_static_id}
+                      onChange={(e) => setCreateForm({...createForm, target_static_id: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                      placeholder="Static ID подозреваемого"
                     />
                   </div>
                   

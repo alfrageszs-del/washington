@@ -321,6 +321,7 @@ export type Warrant = {
   id: string;
   warrant_number: string;
   target_name: string;
+  target_static_id: string;
   warrant_type: WarrantType;
   reason: string;
   articles: string[];
@@ -379,4 +380,41 @@ export const RoleChangeRequestStatusLabel: Record<RoleChangeRequestStatus, strin
   PENDING: "Ожидает рассмотрения",
   APPROVED: "Одобрено",
   REJECTED: "Отклонено",
+};
+
+/** Типы уведомлений */
+export type NotificationType = "document" | "court" | "fine" | "wanted" | "system" | "role_change";
+
+/** Приоритеты уведомлений */
+export type NotificationPriority = "low" | "medium" | "high";
+
+/** Уведомления */
+export type Notification = {
+  id: string;
+  user_id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  url?: string;
+  priority: NotificationPriority;
+  is_read: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+/** Лейблы типов уведомлений */
+export const NotificationTypeLabel: Record<NotificationType, string> = {
+  document: "Документы",
+  court: "Суд",
+  fine: "Штрафы",
+  wanted: "Ордера на арест",
+  system: "Система",
+  role_change: "Изменение роли",
+};
+
+/** Лейблы приоритетов уведомлений */
+export const NotificationPriorityLabel: Record<NotificationPriority, string> = {
+  low: "Низкий",
+  medium: "Средний",
+  high: "Высокий",
 };

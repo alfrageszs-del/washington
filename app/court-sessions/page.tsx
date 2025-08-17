@@ -152,6 +152,11 @@ export default function CourtSessionsPage() {
     return session.status === statusFilter;
   });
 
+  // Отладочная информация
+  console.log("Все заседания:", sessions);
+  console.log("Фильтр статуса:", statusFilter);
+  console.log("Отфильтрованные заседания:", filteredSessions);
+
   // Календарные функции
   const getDaysInMonth = (date: Date) => {
     const year = date.getFullYear();
