@@ -55,7 +55,7 @@ export default function WarrantsPage() {
         .from("warrants")
         .select(`
           *,
-          issuer:profiles!warrants_issued_by_fkey(full_name)
+          issuer:profiles!warrants_issued_by_fkey(full_name, faction)
         `)
         .order("created_at", { ascending: false });
 
@@ -262,7 +262,7 @@ export default function WarrantsPage() {
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {warrants.map((warrant) => (
               <div key={warrant.id} className="bg-white overflow-hidden shadow rounded-lg">
-                <div className="p-6">
+                <div className="p-6 space-y-3">
                   <div className="flex items-center justify-between mb-4">
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(warrant.status)}`}>
                       {getStatusText(warrant.status)}
@@ -287,23 +287,26 @@ export default function WarrantsPage() {
                     </span>
                   </div>
                   
-                  <div className="mb-3">
+                  <div className="flex items-center justify-between">
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                       {getWarrantTypeText(warrant.warrant_type)}
                     </span>
+                    {warrant.source_url && (
+                      <a href={warrant.source_url} target="_blank" className="text-xs text-blue-600 hover:underline">Источник</a>
+                    )}
                   </div>
                   
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">
-                    Цель: {warrant.target_name}
+                  <h3 className="text-lg font-medium text-gray-900">
+                    {warrant.target_name}
                   </h3>
                   
-                  <p className="text-sm text-gray-600 mb-4">
+                  <p className="text-sm text-gray-700">
                     {warrant.reason}
                   </p>
                   
-                  {warrant.articles.length > 0 && (
-                    <div className="mb-4">
-                      <h4 className="text-sm font-medium text-gray-700 mb-2">Статьи:</h4>
+                  {warrant.articles && warrant.articles.length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-700 mb-1">Статьи (опционально):</h4>
                       <div className="flex flex-wrap gap-1">
                         {warrant.articles.map((article, index) => (
                           <span key={index} className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
@@ -314,15 +317,24 @@ export default function WarrantsPage() {
                     </div>
                   )}
                   
-                  <div className="border-t pt-4 space-y-2">
+                  <div className="border-t pt-3 space-y-2">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-500">Выдан:</span>
+                      <span className="text-gray-500">Орган:</span>
+                      <span className="text-gray-900 font-medium">{warrant.issuer?.faction || '—'}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-500">Авторизовал:</span>
                       <span className="text-gray-900 font-medium">{warrant.issuer_name}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-500">Действителен до:</span>
+                      <span className="text-gray-500">Срок действия:</span>
                       <span className="text-gray-900 font-medium">{new Date(warrant.valid_until).toLocaleDateString("ru-RU")}</span>
                     </div>
+                    {warrant.notes && (
+                      <div className="text-sm text-gray-600">
+                        <span className="text-gray-500">Примечание: </span>{warrant.notes}
+                      </div>
+                    )}
                     <div className="flex items-center justify-between text-sm text-gray-500">
                       <span>Дата создания:</span>
                       <span>{new Date(warrant.created_at).toLocaleDateString("ru-RU")}</span>

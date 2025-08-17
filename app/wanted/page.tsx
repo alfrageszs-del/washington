@@ -16,7 +16,7 @@ type Wanted = {
   created_at: string;
 };
 
-const statuses = ["active", "caught", "cancelled"] as const;
+const statuses = ["active", "executed", "cancelled"] as const;
 
 export default function WantedPage() {
   const [me, setMe] = useState<Profile | null>(null);
@@ -55,7 +55,14 @@ export default function WantedPage() {
       qy = qy.or(`target_static_id.ilike.%${q}%,target_name.ilike.%${q}%`);
     }
     if (status !== "Все статусы") {
-      qy = qy.eq("status", status.toLowerCase());
+      // Map UI labels to DB enum values
+      const map: Record<string, string> = {
+        "Активные": "active",
+        "Пойманные": "executed",
+        "Отмененные": "cancelled",
+      };
+      const key = map[status] || undefined;
+      if (key) qy = qy.eq("status", key);
     }
     const { data, error } = await qy;
     if (error) setInfo(error.message);
@@ -94,7 +101,9 @@ export default function WantedPage() {
 
   const setWStatus = async (id: string, s: "active" | "caught" | "cancelled") => {
     setInfo("");
-    const patch: Partial<Wanted> = { status: s };
+    // Map 'caught' (UI) to 'executed' (DB)
+    const dbStatus = s === "caught" ? "executed" : s;
+    const patch: any = { status: dbStatus };
 
     const { error } = await supabase.from("warrants").update(patch).eq("id", id);
     if (error) { setInfo(error.message); return; }
