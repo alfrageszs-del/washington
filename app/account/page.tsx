@@ -180,12 +180,16 @@ export default function AccountPage() {
 
         if (pData) {
           const p = pData as Profile;
-          setNickname(p.nickname);
-          setStaticId(p.static_id);
-          setDiscord(p.discord ?? "");
-          setFaction(p.faction);
-          setGovRole(p.gov_role);
-          setIsVerified(p.is_verified);
+          console.log('Profile data loaded:', p); // Добавляем логирование
+          setNickname(p.nickname || '');
+          setStaticId(p.static_id || '');
+          setDiscord(p.discord ?? '');
+          setFaction(p.faction || 'CIVILIAN');
+          setGovRole(p.gov_role || 'NONE');
+          setIsVerified(p.is_verified || false);
+        } else {
+          console.log('No profile data found for user:', uid); // Логируем отсутствие профиля
+          setInfo("Профиль не найден. Обратитесь к администратору.");
         }
 
         // заявки (берём последние по каждому виду)
@@ -236,19 +240,28 @@ export default function AccountPage() {
   }, []);
 
   const refreshAll = async (uid: string) => {
-    const { data: pData } = await supabase
+    const { data: pData, error: pErr } = await supabase
       .from("profiles")
       .select("*")
       .eq("id", uid)
       .maybeSingle();
+    
+    if (pErr) {
+      console.error('Error refreshing profile:', pErr);
+      return;
+    }
+    
     if (pData) {
       const p = pData as Profile;
-      setGovRole(p.gov_role);
-      setIsVerified(p.is_verified);
-      setFaction(p.faction);
-      setNickname(p.nickname);
-      setStaticId(p.static_id);
+      console.log('Profile refreshed:', p); // Добавляем логирование
+      setGovRole(p.gov_role || 'NONE');
+      setIsVerified(p.is_verified || false);
+      setFaction(p.faction || 'CIVILIAN');
+      setNickname(p.nickname || '');
+      setStaticId(p.static_id || '');
       setDiscord(p.discord ?? "");
+    } else {
+      console.log('No profile data found during refresh for user:', uid);
     }
     const { data: ver } = await supabase
       .from("verification_requests")

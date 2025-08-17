@@ -352,6 +352,8 @@ ALTER TABLE fines ENABLE ROW LEVEL SECURITY;
 -- Политики для profiles (пользователи могут читать все профили, редактировать только свой)
 CREATE POLICY "Users can view all profiles" ON profiles FOR SELECT USING (true);
 CREATE POLICY "Users can update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
+-- ВАЖНО: Система может создавать профили (для функции handle_new_user)
+CREATE POLICY "System can create profiles" ON profiles FOR INSERT WITH CHECK (true);
 
 -- Политики для appointments (записаться на прием может любой залогиненный юзер)
 CREATE POLICY "Users can view appointments" ON appointments FOR SELECT USING (

@@ -132,3 +132,80 @@ BEGIN
     END IF;
 END $$;
 
+-- 7) Recreate auth.users -> public.profiles trigger for automatic profile creation
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    user_nickname TEXT;
+    user_static_id TEXT;
+    user_discord   TEXT;
+    user_faction   TEXT;
+    user_full_name TEXT;
+BEGIN
+    -- Extract metadata with fallbacks
+    user_nickname := COALESCE(NEW.raw_user_meta_data->>'nickname', 'User');
+    user_static_id := COALESCE(NEW.raw_user_meta_data->>'static_id', 'user_' || substr(NEW.id::text, 1, 8));
+    user_discord   := NEW.raw_user_meta_data->>'discord';
+    user_faction   := COALESCE(NEW.raw_user_meta_data->>'faction', 'CIVILIAN');
+    user_full_name := COALESCE(NEW.raw_user_meta_data->>'full_name', user_nickname);
+
+    -- Normalize faction to supported set if needed
+    user_faction := CASE UPPER(user_faction)
+        WHEN 'CIVILIAN' THEN 'CIVILIAN'
+        WHEN 'GOV'      THEN 'GOV'
+        WHEN 'COURT'    THEN 'COURT'
+        WHEN 'WN'       THEN 'WN'
+        WHEN 'FIB'      THEN 'FIB'
+        WHEN 'LSPD'     THEN 'LSPD'
+        WHEN 'LSCSD'    THEN 'LSCSD'
+        WHEN 'EMS'      THEN 'EMS'
+        WHEN 'SANG'     THEN 'SANG'
+        ELSE 'CIVILIAN'
+    END;
+
+    -- Insert profile if not exists
+    INSERT INTO public.profiles (
+        id,
+        email,
+        nickname,
+        discord,
+        full_name,
+        static_id,
+        faction,
+        gov_role,
+        is_verified,
+        created_at,
+        updated_at
+    ) VALUES (
+        NEW.id,
+        NEW.email,
+        user_nickname,
+        user_discord,
+        user_full_name,
+        user_static_id,
+        user_faction,
+        'NONE',
+        false,
+        NOW(),
+        NOW()
+    )
+    ON CONFLICT (id) DO NOTHING;
+
+    RETURN NEW;
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE LOG 'Error in handle_new_user for user %: %', NEW.id, SQLERRM;
+        RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER on_auth_user_created
+AFTER INSERT ON auth.users
+FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+

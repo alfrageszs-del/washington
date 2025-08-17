@@ -25,6 +25,7 @@ export default function CasesPage() {
   const [user, setUser] = useState<Profile | null>(null);
   const [canCreate, setCanCreate] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [judges, setJudges] = useState<Profile[]>([]);
   const [createForm, setCreateForm] = useState({
     case_number: "",
     title: "",
@@ -34,7 +35,27 @@ export default function CasesPage() {
 
   useEffect(() => {
     loadUserAndCases();
+    loadJudges();
   }, []);
+
+  const loadJudges = async () => {
+    try {
+      const { data: judgesData, error: judgesError } = await supabase
+        .from("profiles")
+        .select("id, full_name, nickname")
+        .eq("gov_role", "JUDGE")
+        .eq("is_verified", true)
+        .order("full_name");
+
+      if (judgesError) {
+        console.error("Ошибка загрузки судей:", judgesError);
+      } else {
+        setJudges(judgesData || []);
+      }
+    } catch (err) {
+      console.error("Ошибка загрузки судей:", err);
+    }
+  };
 
   const loadUserAndCases = async () => {
     try {
@@ -176,7 +197,7 @@ export default function CasesPage() {
             <div>
               <h1 className="text-3xl font-bold text-gray-900">Дела</h1>
               <p className="mt-2 text-sm text-gray-600">
-                Реестр всех судебных дел
+                Картотека делопроизводств
               </p>
             </div>
             {canCreate && (
@@ -187,7 +208,7 @@ export default function CasesPage() {
                 <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
-                Создать дело
+                    Создать делопроизводство
               </button>
             )}
           </div>
@@ -220,7 +241,7 @@ export default function CasesPage() {
             </svg>
             <h3 className="mt-2 text-sm font-medium text-gray-900">Нет дел</h3>
             <p className="mt-1 text-sm text-gray-500">
-              Пока не создано ни одного судебного дела.
+              Пока не создано ни одного делопроизводства.
             </p>
           </div>
         ) : (
@@ -269,7 +290,15 @@ export default function CasesPage() {
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-gray-500">Судья:</span>
-                      <span className="text-gray-900 font-medium">{caseItem.judge_name}</span>
+                      <span className="text-gray-900 font-medium">
+                        {caseItem.judge_name === "Не назначен" ? (
+                          <span className="text-gray-400 italic">Не назначен</span>
+                        ) : caseItem.judge_name === "Выберите судью" ? (
+                          <span className="text-gray-400 italic">Не назначен</span>
+                        ) : (
+                          caseItem.judge_name
+                        )}
+                      </span>
                     </div>
                     <div className="flex items-center justify-between text-sm text-gray-500">
                       <span>Дата создания:</span>
@@ -289,7 +318,7 @@ export default function CasesPage() {
           <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
             <div className="mt-3">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-medium text-gray-900">Создать новое судебное дело</h3>
+                <h3 className="text-lg font-medium text-gray-900">Создать новое делопроизводство</h3>
                 <button
                   onClick={() => setShowCreateForm(false)}
                   className="text-gray-400 hover:text-gray-600"
@@ -304,7 +333,7 @@ export default function CasesPage() {
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Номер дела *
+                      Номер делопроизводства *
                     </label>
                     <input
                       type="text"
@@ -312,13 +341,13 @@ export default function CasesPage() {
                       value={createForm.case_number}
                       onChange={(e) => setCreateForm({...createForm, case_number: e.target.value})}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="Дело №123/2024"
+                      placeholder="ДП №123/2024"
                     />
                   </div>
                   
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Название дела *
+                      Название делопроизводства *
                     </label>
                     <input
                       type="text"
@@ -326,34 +355,36 @@ export default function CasesPage() {
                       value={createForm.title}
                       onChange={(e) => setCreateForm({...createForm, title: e.target.value})}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="Введите название судебного дела"
+                      placeholder="Введите название делопроизводства"
                     />
                   </div>
                   
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Описание
+                      Описание делопроизводства
                     </label>
                     <textarea
                       rows={4}
                       value={createForm.description}
                       onChange={(e) => setCreateForm({...createForm, description: e.target.value})}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="Краткое описание дела"
+                      placeholder="Краткое описание делопроизводства"
                     />
                   </div>
                   
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Судья (опционально)
+                      Судья для рассмотрения
                     </label>
                     <select
                       value={createForm.judge_id}
                       onChange={(e) => setCreateForm({...createForm, judge_id: e.target.value})}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     >
-                      <option value="">Не назначен</option>
-                      {/* Здесь можно добавить список судей */}
+                      <option value="">Выберите судью</option>
+                      {judges.map(judge => (
+                        <option key={judge.id} value={judge.id}>{judge.full_name}</option>
+                      ))}
                     </select>
                   </div>
                 </div>
