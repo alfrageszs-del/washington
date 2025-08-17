@@ -574,12 +574,12 @@ export default function AccountPage() {
         <h2 className="mb-4 text-lg font-semibold">Быстрые действия</h2>
         <div className="grid gap-3 md:grid-cols-2">
           <a
-            href="/notifications"
+            href="/account/appointments"
             className="flex items-center justify-between rounded-lg border p-3 hover:bg-gray-50 transition-colors"
           >
             <div>
-              <div className="font-medium">Уведомления</div>
-              <div className="text-sm text-gray-600">Просмотр новых уведомлений</div>
+              <div className="font-medium">Мои записи на прием</div>
+              <div className="text-sm text-gray-600">Просмотр и управление записями</div>
             </div>
             <div className="text-blue-600">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

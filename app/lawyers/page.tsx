@@ -7,28 +7,18 @@ import type { Profile } from "../../lib/supabase/client";
 interface Lawyer {
   id: string;
   user_id: string;
-  name: string;
-  type: "government" | "private";
-  specialization: string[];
-  experience: number;
-  rating: number;
-  cases_count: number;
-  status: "available" | "busy" | "unavailable";
-  contact?: string;
-  price?: string;
+  license_number: string;
+  specialization?: string;
+  status: string;
   created_at: string;
   updated_at: string;
 }
 
 interface LawyerRequest {
   id: string;
-  client_id: string;
-  client_name: string;
-  client_static_id: string;
-  case_type: string;
-  description: string;
-  status: "pending" | "approved" | "rejected" | "assigned";
-  assigned_lawyer_id?: string;
+  user_id: string;
+  request_type: string;
+  status: string;
   created_at: string;
   updated_at: string;
 }
@@ -37,13 +27,8 @@ interface LawyerContract {
   id: string;
   lawyer_id: string;
   client_id: string;
-  case_number?: string;
-  contract_terms: string;
-  fee_amount?: number;
-  fee_currency: string;
-  status: "active" | "completed" | "terminated";
-  start_date: string;
-  end_date?: string;
+  case_id?: string;
+  status: string;
   created_at: string;
   updated_at: string;
 }
@@ -60,19 +45,14 @@ export default function LawyersPage() {
   // Форма добавления адвоката
   const [showAddLawyerModal, setShowAddLawyerModal] = useState(false);
   const [addLawyerForm, setAddLawyerForm] = useState({
-    name: "",
-    type: "government" as "government" | "private",
-    specialization: "",
-    experience: 0,
-    contact: "",
-    price: ""
+    license_number: "",
+    specialization: ""
   });
 
   // Форма запроса на адвоката
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [requestForm, setRequestForm] = useState({
-    caseType: "",
-    description: ""
+    request_type: "LICENSE"
   });
 
   useEffect(() => {
@@ -147,24 +127,16 @@ export default function LawyersPage() {
         .from("lawyers")
         .insert({
           user_id: user.id,
-          name: addLawyerForm.name,
-          type: addLawyerForm.type,
-          specialization: addLawyerForm.specialization.split(",").map(s => s.trim()),
-          experience: addLawyerForm.experience,
-          contact: addLawyerForm.contact || null,
-          price: addLawyerForm.price || null,
-          status: "available"
+          license_number: addLawyerForm.license_number,
+          specialization: addLawyerForm.specialization || null,
+          status: "ACTIVE"
         });
 
       if (error) throw error;
 
       setAddLawyerForm({
-        name: "",
-        type: "government",
-        specialization: "",
-        experience: 0,
-        contact: "",
-        price: ""
+        license_number: "",
+        specialization: ""
       });
       setShowAddLawyerModal(false);
       await loadData();
@@ -185,16 +157,14 @@ export default function LawyersPage() {
       const { error } = await supabase
         .from("lawyer_requests")
         .insert({
-          client_id: user.id,
-          client_name: userProfile.nickname,
-          client_static_id: userProfile.static_id,
-          case_type: requestForm.caseType,
-          description: requestForm.description,
+          user_id: user.id,
+          request_type: requestForm.request_type,
+          status: "PENDING"
         });
 
       if (error) throw error;
 
-      setRequestForm({ caseType: "", description: "" });
+      setRequestForm({ request_type: "LICENSE" });
       setShowRequestModal(false);
       await loadData();
     } catch (error) {
@@ -205,33 +175,38 @@ export default function LawyersPage() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "available": return "bg-green-100 text-green-800";
-      case "busy": return "bg-yellow-100 text-yellow-800";
-      case "unavailable": return "bg-red-100 text-red-800";
-      case "pending": return "bg-blue-100 text-blue-800";
-      case "approved": return "bg-green-100 text-green-800";
-      case "rejected": return "bg-red-100 text-red-800";
-      case "assigned": return "bg-purple-100 text-purple-800";
-      case "active": return "bg-green-100 text-green-800";
-      case "completed": return "bg-gray-100 text-gray-800";
-      case "terminated": return "bg-red-100 text-red-800";
+      case "ACTIVE": return "bg-green-100 text-green-800";
+      case "SUSPENDED": return "bg-yellow-100 text-yellow-800";
+      case "REVOKED": return "bg-red-100 text-red-800";
+      case "PENDING": return "bg-blue-100 text-blue-800";
+      case "APPROVED": return "bg-green-100 text-green-800";
+      case "REJECTED": return "bg-red-100 text-red-800";
+      case "COMPLETED": return "bg-gray-100 text-gray-800";
+      case "CANCELLED": return "bg-red-100 text-red-800";
       default: return "bg-gray-100 text-gray-800";
     }
   };
 
   const getStatusLabel = (status: string) => {
     switch (status) {
-      case "available": return "Доступен";
-      case "busy": return "Занят";
-      case "unavailable": return "Недоступен";
-      case "pending": return "Ожидает";
-      case "approved": return "Одобрен";
-      case "rejected": return "Отклонен";
-      case "assigned": return "Назначен";
-      case "active": return "Активен";
-      case "completed": return "Завершен";
-      case "terminated": return "Расторгнут";
+      case "ACTIVE": return "Активен";
+      case "SUSPENDED": return "Приостановлен";
+      case "REVOKED": return "Отозван";
+      case "PENDING": return "Ожидает";
+      case "APPROVED": return "Одобрен";
+      case "REJECTED": return "Отклонен";
+      case "COMPLETED": return "Завершен";
+      case "CANCELLED": return "Отменен";
       default: return status;
+    }
+  };
+
+  const getRequestTypeLabel = (type: string) => {
+    switch (type) {
+      case "LICENSE": return "Лицензия";
+      case "SPECIALIZATION": return "Специализация";
+      case "STATUS_CHANGE": return "Изменение статуса";
+      default: return type;
     }
   };
 
@@ -326,22 +301,19 @@ export default function LawyersPage() {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Имя
+                      ID пользователя
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Тип
+                      Номер лицензии
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Специализация
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Опыт
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Статус
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Контакт
+                      Дата создания
                     </th>
                   </tr>
                 </thead>
@@ -349,22 +321,15 @@ export default function LawyersPage() {
                   {lawyers.map((lawyer) => (
                     <tr key={lawyer.id}>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">{lawyer.name}</div>
+                        <div className="text-sm font-medium text-gray-900">{lawyer.user_id}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                          lawyer.type === "government" ? "bg-blue-100 text-blue-800" : "bg-purple-100 text-purple-800"
-                        }`}>
-                          {lawyer.type === "government" ? "Государственный" : "Частный"}
-                        </span>
+                        <div className="text-sm font-medium text-gray-900">{lawyer.license_number}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-900">
-                          {lawyer.specialization.join(", ")}
+                          {lawyer.specialization || "-"}
                         </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">{lawyer.experience} лет</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(lawyer.status)}`}>
@@ -372,7 +337,9 @@ export default function LawyersPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">{lawyer.contact || "-"}</div>
+                        <div className="text-sm text-gray-900">
+                          {new Date(lawyer.created_at).toLocaleDateString("ru-RU")}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -397,13 +364,10 @@ export default function LawyersPage() {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Клиент
+                      ID пользователя
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Тип дела
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Описание
+                      Тип запроса
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Статус
@@ -417,14 +381,10 @@ export default function LawyersPage() {
                   {requests.map((request) => (
                     <tr key={request.id}>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">{request.client_name}</div>
-                        <div className="text-sm text-gray-500">{request.client_static_id}</div>
+                        <div className="text-sm font-medium text-gray-900">{request.user_id}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">{request.case_type}</div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm text-gray-900 max-w-xs truncate">{request.description}</div>
+                        <div className="text-sm text-gray-900">{getRequestTypeLabel(request.request_type)}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(request.status)}`}>
@@ -459,19 +419,19 @@ export default function LawyersPage() {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Номер дела
+                      ID адвоката
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Условия
+                      ID клиента
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Сумма
+                      ID дела
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Статус
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Дата начала
+                      Дата создания
                     </th>
                   </tr>
                 </thead>
@@ -479,15 +439,13 @@ export default function LawyersPage() {
                   {contracts.map((contract) => (
                     <tr key={contract.id}>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">{contract.case_number || "-"}</div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm text-gray-900 max-w-xs truncate">{contract.contract_terms}</div>
+                        <div className="text-sm font-medium text-gray-900">{contract.lawyer_id}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
-                          {contract.fee_amount ? `${contract.fee_amount} ${contract.fee_currency}` : "-"}
-                        </div>
+                        <div className="text-sm font-medium text-gray-900">{contract.client_id}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">{contract.case_id || "-"}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(contract.status)}`}>
@@ -496,7 +454,7 @@ export default function LawyersPage() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-900">
-                          {new Date(contract.start_date).toLocaleDateString("ru-RU")}
+                          {new Date(contract.created_at).toLocaleDateString("ru-RU")}
                         </div>
                       </td>
                     </tr>
@@ -521,32 +479,19 @@ export default function LawyersPage() {
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Имя адвоката
+                      Номер лицензии
                     </label>
                     <input
                       type="text"
-                      value={addLawyerForm.name}
-                      onChange={(e) => setAddLawyerForm({...addLawyerForm, name: e.target.value})}
+                      value={addLawyerForm.license_number}
+                      onChange={(e) => setAddLawyerForm({...addLawyerForm, license_number: e.target.value})}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       required
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Тип
-                    </label>
-                    <select
-                      value={addLawyerForm.type}
-                      onChange={(e) => setAddLawyerForm({...addLawyerForm, type: e.target.value as "government" | "private"})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      <option value="government">Государственный</option>
-                      <option value="private">Частный</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Специализация (через запятую)
+                      Специализация
                     </label>
                     <input
                       type="text"
@@ -554,41 +499,6 @@ export default function LawyersPage() {
                       onChange={(e) => setAddLawyerForm({...addLawyerForm, specialization: e.target.value})}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       placeholder="Уголовное право, Гражданское право"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Опыт (лет)
-                    </label>
-                    <input
-                      type="number"
-                      value={addLawyerForm.experience}
-                      onChange={(e) => setAddLawyerForm({...addLawyerForm, experience: parseInt(e.target.value)})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      min="0"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Контакт
-                    </label>
-                    <input
-                      type="text"
-                      value={addLawyerForm.contact}
-                      onChange={(e) => setAddLawyerForm({...addLawyerForm, contact: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Цена (для частных)
-                    </label>
-                    <input
-                      type="text"
-                      value={addLawyerForm.price}
-                      onChange={(e) => setAddLawyerForm({...addLawyerForm, price: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="1000$ за час"
                     />
                   </div>
                 </div>
@@ -621,29 +531,17 @@ export default function LawyersPage() {
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Тип дела
+                      Тип запроса
                     </label>
-                    <input
-                      type="text"
-                      value={requestForm.caseType}
-                      onChange={(e) => setRequestForm({...requestForm, caseType: e.target.value})}
+                    <select
+                      value={requestForm.request_type}
+                      onChange={(e) => setRequestForm({...requestForm, request_type: e.target.value})}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="Уголовное дело, Гражданский спор"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Описание ситуации
-                    </label>
-                    <textarea
-                      value={requestForm.description}
-                      onChange={(e) => setRequestForm({...requestForm, description: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      rows={4}
-                      placeholder="Опишите вашу ситуацию..."
-                      required
-                    />
+                    >
+                      <option value="LICENSE">Лицензия</option>
+                      <option value="SPECIALIZATION">Специализация</option>
+                      <option value="STATUS_CHANGE">Изменение статуса</option>
+                    </select>
                   </div>
                 </div>
                 <div className="flex justify-end space-x-3 mt-6">

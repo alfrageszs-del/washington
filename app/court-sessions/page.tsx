@@ -6,17 +6,11 @@ import type { Profile } from "../../lib/supabase/client";
 
 interface CourtSession {
   id: string;
+  session_date: string;
   title: string;
-  case_number?: string;
-  judge_id?: string;
-  judge_name: string;
-  date: string;
-  time: string;
-  type: "open" | "closed";
-  status: "scheduled" | "in_progress" | "completed" | "cancelled";
-  participants: string[];
   description?: string;
-  courtroom?: string;
+  status: string;
+  created_by: string;
   created_at: string;
   updated_at: string;
 }
@@ -26,21 +20,16 @@ export default function CourtSessionsPage() {
   const [profiles, setProfiles] = useState<Record<string, Profile>>({});
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"list" | "calendar">("list");
-  const [filter, setFilter] = useState<"all" | "open" | "closed">("all");
-  const [statusFilter, setStatusFilter] = useState<"all" | "scheduled" | "in_progress" | "completed" | "cancelled">("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
   const [userProfile, setUserProfile] = useState<Profile | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createForm, setCreateForm] = useState({
     title: "",
-    case_number: "",
-    date: "",
-    time: "",
-    type: "open" as "open" | "closed",
+    session_date: "",
     description: "",
-    courtroom: "",
-    participants: ""
+    status: "scheduled"
   });
 
   useEffect(() => {
@@ -66,22 +55,21 @@ export default function CourtSessionsPage() {
       const { data: sessionsData } = await supabase
         .from("court_sessions")
         .select("*")
-        .order("date", { ascending: true })
-        .order("time", { ascending: true });
+        .order("session_date", { ascending: true });
 
       if (sessionsData) {
         setSessions(sessionsData as CourtSession[]);
         
-        // Загружаем профили судей
-        const judgeIds = sessionsData
-          .map(s => s.judge_id)
+        // Загружаем профили создателей
+        const creatorIds = sessionsData
+          .map(s => s.created_by)
           .filter(Boolean);
 
-        if (judgeIds.length > 0) {
+        if (creatorIds.length > 0) {
           const { data: profilesData } = await supabase
             .from("profiles")
             .select("*")
-            .in("id", judgeIds);
+            .in("id", creatorIds);
 
           if (profilesData) {
             const profilesMap: Record<string, Profile> = {};
@@ -108,22 +96,14 @@ export default function CourtSessionsPage() {
     if (!userProfile) return;
     
     try {
-      const participantsArray = createForm.participants
-        .split(",")
-        .map(p => p.trim())
-        .filter(p => p.length > 0);
-
       const { data, error } = await supabase
         .from("court_sessions")
         .insert({
           title: createForm.title,
-          case_id: null, // case_id вместо case_number
-          judge_id: userProfile.id,
-          session_date: `${createForm.date}T${createForm.time}:00`, // session_date вместо date+time
-          status: "scheduled",
+          session_date: createForm.session_date,
           description: createForm.description || null,
-          location: createForm.courtroom || null, // location вместо courtroom
-          notes: `Тип: ${createForm.type}, Участники: ${participantsArray.join(", ")}` // notes для дополнительной информации
+          status: createForm.status,
+          created_by: userProfile.id
         })
         .select()
         .single();
@@ -137,25 +117,13 @@ export default function CourtSessionsPage() {
       setShowCreateForm(false);
       setCreateForm({
         title: "",
-        case_number: "",
-        date: "",
-        time: "",
-        type: "open",
+        session_date: "",
         description: "",
-        courtroom: "",
-        participants: ""
+        status: "scheduled"
       });
       await loadSessions();
     } catch (error) {
       console.error("Ошибка при создании заседания:", error);
-    }
-  };
-
-  const getTypeLabel = (type: string) => {
-    switch (type) {
-      case "open": return "Открытое";
-      case "closed": return "Закрытое";
-      default: return type;
     }
   };
 
@@ -179,18 +147,9 @@ export default function CourtSessionsPage() {
     }
   };
 
-  const getTypeClass = (type: string) => {
-    switch (type) {
-      case "open": return "bg-green-100 text-green-800";
-      case "closed": return "bg-red-100 text-red-800";
-      default: return "bg-gray-100 text-gray-800";
-    }
-  };
-
   const filteredSessions = sessions.filter(session => {
-    const matchesType = filter === "all" || session.type === filter;
-    const matchesStatus = statusFilter === "all" || session.status === statusFilter;
-    return matchesType && matchesStatus;
+    if (statusFilter === "all") return true;
+    return session.status === statusFilter;
   });
 
   // Календарные функции
@@ -207,7 +166,10 @@ export default function CourtSessionsPage() {
 
   const getSessionsForDate = (date: Date) => {
     const dateStr = date.toISOString().split('T')[0];
-    return filteredSessions.filter(session => session.date === dateStr);
+    return filteredSessions.filter(session => {
+      const sessionDate = new Date(session.session_date).toISOString().split('T')[0];
+      return sessionDate === dateStr;
+    });
   };
 
   const formatDate = (date: Date) => {
@@ -358,82 +320,13 @@ export default function CourtSessionsPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Номер дела (необязательно)
+                  Дата и время
                 </label>
                 <input
-                  type="text"
-                  value={createForm.case_number}
-                  onChange={(e) => setCreateForm({...createForm, case_number: e.target.value})}
+                  type="datetime-local"
+                  value={createForm.session_date}
+                  onChange={(e) => setCreateForm({...createForm, session_date: e.target.value})}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Введите номер дела"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Дата
-                  </label>
-                  <input
-                    type="date"
-                    value={createForm.date}
-                    onChange={(e) => setCreateForm({...createForm, date: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Время
-                  </label>
-                  <input
-                    type="time"
-                    value={createForm.time}
-                    onChange={(e) => setCreateForm({...createForm, time: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Тип заседания
-                  </label>
-                  <select
-                    value={createForm.type}
-                    onChange={(e) => setCreateForm({...createForm, type: e.target.value as any})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="open">Открытое</option>
-                    <option value="closed">Закрытое</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Зал суда
-                  </label>
-                  <input
-                    type="text"
-                    value={createForm.courtroom}
-                    onChange={(e) => setCreateForm({...createForm, courtroom: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Номер зала"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Участники (через запятую)
-                </label>
-                <input
-                  type="text"
-                  value={createForm.participants}
-                  onChange={(e) => setCreateForm({...createForm, participants: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Имя 1, Имя 2, Имя 3"
                 />
               </div>
 
@@ -450,10 +343,26 @@ export default function CourtSessionsPage() {
                 />
               </div>
 
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Статус
+                </label>
+                <select
+                  value={createForm.status}
+                  onChange={(e) => setCreateForm({...createForm, status: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="scheduled">Запланировано</option>
+                  <option value="in_progress">В процессе</option>
+                  <option value="completed">Завершено</option>
+                  <option value="cancelled">Отменено</option>
+                </select>
+              </div>
+
               <div className="flex gap-3 pt-4">
                 <button
                   onClick={handleCreateSession}
-                  disabled={!createForm.title || !createForm.date || !createForm.time}
+                  disabled={!createForm.title || !createForm.session_date}
                   className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
                 >
                   Создать заседание
@@ -472,39 +381,6 @@ export default function CourtSessionsPage() {
 
       {/* Фильтры */}
       <div className="mb-6 space-y-4">
-        <div className="flex gap-2">
-          <button
-            onClick={() => setFilter("all")}
-            className={`px-4 py-2 rounded-lg text-sm font-medium ${
-              filter === "all" 
-                ? "bg-blue-600 text-white" 
-                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-            }`}
-          >
-            Все типы
-          </button>
-          <button
-            onClick={() => setFilter("open")}
-            className={`px-4 py-2 rounded-lg text-sm font-medium ${
-              filter === "open" 
-                ? "bg-blue-600 text-white" 
-                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-            }`}
-          >
-            Открытые
-          </button>
-          <button
-            onClick={() => setFilter("closed")}
-            className={`px-4 py-2 rounded-lg text-sm font-medium ${
-              filter === "closed" 
-                ? "bg-blue-600 text-white" 
-                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-            }`}
-          >
-            Закрытые
-          </button>
-        </div>
-
         <div className="flex gap-2">
           <button
             onClick={() => setStatusFilter("all")}
@@ -558,63 +434,35 @@ export default function CourtSessionsPage() {
                 <div className="flex items-start justify-between mb-4">
                   <div>
                     <h3 className="text-lg font-semibold">{session.title}</h3>
-                    {session.case_number && (
-                      <p className="text-sm text-gray-600">Дело №{session.case_number}</p>
-                    )}
+                    <p className="text-sm text-gray-600">
+                      Создано: {profiles[session.created_by]?.full_name || "Неизвестно"}
+                    </p>
                   </div>
                   <div className="flex gap-2">
-                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${getTypeClass(session.type)}`}>
-                      {getTypeLabel(session.type)}
-                    </span>
                     <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusClass(session.status)}`}>
                       {getStatusLabel(session.status)}
                     </span>
                   </div>
                 </div>
 
-                <div className="grid md:grid-cols-3 gap-4 text-sm mb-4">
+                <div className="grid md:grid-cols-2 gap-4 text-sm mb-4">
                   <div>
-                    <span className="text-gray-500">Дата:</span>{" "}
+                    <span className="text-gray-500">Дата и время:</span>{" "}
                     <span className="font-medium">
-                      {new Date(session.date).toLocaleDateString("ru-RU")}
+                      {new Date(session.session_date).toLocaleString("ru-RU")}
                     </span>
                   </div>
                   <div>
-                    <span className="text-gray-500">Время:</span>{" "}
-                    <span className="font-medium">{session.time}</span>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">Судья:</span>{" "}
-                    <span className="font-medium">{session.judge_name}</span>
+                    <span className="text-gray-500">Создано:</span>{" "}
+                    <span className="font-medium">
+                      {new Date(session.created_at).toLocaleDateString("ru-RU")}
+                    </span>
                   </div>
                 </div>
-
-                {session.courtroom && (
-                  <div className="text-sm mb-4">
-                    <span className="text-gray-500">Зал суда:</span>{" "}
-                    <span className="font-medium">{session.courtroom}</span>
-                  </div>
-                )}
 
                 {session.description && (
                   <div className="text-sm text-gray-600 mb-4">
                     {session.description}
-                  </div>
-                )}
-
-                {session.participants.length > 0 && (
-                  <div>
-                    <span className="text-sm text-gray-500">Участники:</span>
-                    <div className="flex flex-wrap gap-2 mt-1">
-                      {session.participants.map((participant, index) => (
-                        <span
-                          key={index}
-                          className="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs"
-                        >
-                          {participant}
-                        </span>
-                      ))}
-                    </div>
                   </div>
                 )}
               </div>
@@ -683,16 +531,10 @@ export default function CourtSessionsPage() {
                         <div>
                           <h4 className="font-medium">{session.title}</h4>
                           <p className="text-sm text-gray-600">
-                            {session.time} • {session.judge_name}
+                            {new Date(session.session_date).toLocaleTimeString("ru-RU", {hour: '2-digit', minute:'2-digit'})} • {profiles[session.created_by]?.full_name || "Неизвестно"}
                           </p>
-                          {session.courtroom && (
-                            <p className="text-sm text-gray-600">Зал: {session.courtroom}</p>
-                          )}
                         </div>
                         <div className="flex gap-2">
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getTypeClass(session.type)}`}>
-                            {getTypeLabel(session.type)}
-                          </span>
                           <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusClass(session.status)}`}>
                             {getStatusLabel(session.status)}
                           </span>
